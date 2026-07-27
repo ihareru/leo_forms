@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}
+    Личный кабинет — Леовит формы
+{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <h1 class="h2">
+        Личный кабинет
+    </h1>
+
+    <p class="text-secondary">
+        Пользователь:
+        {{ request.user.get_full_name }}
+    </p>
+</div>
+
+<div class="row g-4">
+    <div class="col-12 col-md-6 col-xl-4">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body">
+                <h2 class="h5">
+                    Мои формы
+                </h2>
+
+                <p class="text-secondary">
+                    Создание, редактирование и публикация форм.
+                </p>
+
+                <button
+                    type="button"
+                    class="btn btn-primary"
+                    disabled
+                >
+                    Перейти к формам
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-md-6 col-xl-4">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body">
+                <h2 class="h5">
+                    Результаты
+                </h2>
+
+                <p class="text-secondary">
+                    Просмотр ответов и средних оценок.
+                </p>
+
+                <button
+                    type="button"
+                    class="btn btn-outline-primary"
+                    disabled
+                >
+                    Смотреть результаты
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-md-6 col-xl-4">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body">
+                <h2 class="h5">
+                    Протоколы
+                </h2>
+
+                <p class="text-secondary">
+                    Формирование DOCX после окончания опроса.
+                </p>
+
+                <button
+                    type="button"
+                    class="btn btn-outline-primary"
+                    disabled
+                >
+                    Открыть протоколы
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

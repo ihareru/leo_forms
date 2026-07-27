@@ -1,0 +1,83 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1"
+    >
+
+    <title>
+        {% block title %}
+            Леовит формы
+        {% endblock %}
+    </title>
+
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+    >
+
+    <link
+        href="{% static 'css/portal.css' %}"
+        rel="stylesheet"
+    >
+</head>
+
+<body>
+    <nav class="navbar navbar-expand-lg bg-body-tertiary">
+        <div class="container">
+            <a
+                class="navbar-brand"
+                href="{% url 'accounts:dashboard' %}"
+            >
+                Леовит формы
+            </a>
+
+            {% if request.user.is_authenticated %}
+                <div class="d-flex align-items-center gap-3">
+                    <span>
+                        {{ request.user.get_full_name }}
+                    </span>
+
+                    <form
+                        method="post"
+                        action="{% url 'accounts:logout' %}"
+                    >
+                        {% csrf_token %}
+
+                        <button
+                            type="submit"
+                            class="btn btn-outline-secondary btn-sm"
+                        >
+                            Выйти
+                        </button>
+                    </form>
+                </div>
+            {% endif %}
+        </div>
+    </nav>
+
+    <main class="container py-4">
+        {% if messages %}
+            {% for message in messages %}
+                <div
+                    class="alert alert-{{ message.tags|default:'info' }}"
+                >
+                    {{ message }}
+                </div>
+            {% endfor %}
+        {% endif %}
+
+        {% block content %}
+        {% endblock %}
+    </main>
+
+    <script
+        src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"
+    ></script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+html {
+    min-height: 100%;
+}
+
+body {
+    min-height: 100vh;
+    background-color: #f5f6f8;
+}
+
+.navbar-brand {
+    font-weight: 600;
+}
+
+.card {
+    border: 0;
+}
+
+.form-control:focus,
+.form-check-input:focus {
+    box-shadow: 0 0 0 0.2rem rgb(13 110 253 / 15%);
+}

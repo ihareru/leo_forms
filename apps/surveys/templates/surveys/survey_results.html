@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+
+{% block title %}
+    Результаты — {{ survey.title }}
+{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <a
+        href="{% url 'surveys:survey_edit' survey.pk %}"
+        class="text-decoration-none"
+    >
+        ← Вернуться к форме
+    </a>
+</div>
+
+<div
+    class="d-flex flex-column flex-lg-row
+           justify-content-between align-items-lg-start
+           gap-3 mb-4"
+>
+    <div>
+        <h1 class="h2 mb-1">
+            Результаты
+        </h1>
+
+        <p class="text-secondary mb-0">
+            {{ survey.title }}
+        </p>
+    </div>
+
+    <div class="d-flex flex-wrap gap-2">
+        <a
+            href="{% url 'surveys:survey_excel_export' survey.pk %}"
+            class="btn btn-success"
+        >
+            Скачать Excel
+        </a>
+
+        <a
+            href="{% url 'surveys:survey_qr_print' survey.pk %}"
+            class="btn btn-outline-primary"
+            target="_blank"
+            rel="noopener"
+        >
+            QR-код и печать
+        </a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-12 col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <div class="text-secondary">
+                    Всего ответов
+                </div>
+
+                <div class="display-6">
+                    {{ results.submissions_total }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <div class="text-secondary">
+                    В расчётах
+                </div>
+
+                <div class="display-6">
+                    {{ results.submissions_included }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <div class="text-secondary">
+                    Исключено
+                </div>
+
+                <div class="display-6">
+                    {{ results.submissions_excluded }}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-white py-3">
+        <h2 class="h4 mb-0">
+            Средние оценки
+        </h2>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-bordered align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>Образец</th>
+
+                    {% for question in results.rating_questions %}
+                        <th class="text-center">
+                            {{ question.title }}
+                        </th>
+                    {% endfor %}
+
+                    <th class="text-center">
+                        Средний балл
+                    </th>
+
+                    <th>
+                        Комментарии
+                    </th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {% for row in results.rows %}
+                    <tr>
+                        <td style="min-width: 220px;">
+                            <div class="fw-semibold">
+                                {{ row.sample.name }}
+                            </div>
+
+                            {% if row.sample.description %}
+                                <div class="small text-secondary mt-1">
+                                    {{ row.sample.description|linebreaksbr }}
+                                </div>
+                            {% endif %}
+                        </td>
+
+                        {% for score in row.scores %}
+                            <td class="text-center">
+                                {% if score.average is not None %}
+                                    {{ score.average }}
+                                {% else %}
+                                    —
+                                {% endif %}
+                            </td>
+                        {% endfor %}
+
+                        <td class="text-center fw-semibold">
+                            {% if row.overall_average is not None %}
+                                {{ row.overall_average }}
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+
+                        <td style="min-width: 300px;">
+                            {% if row.comments %}
+                                <ul class="mb-0 ps-3">
+                                    {% for comment in row.comments %}
+                                        <li class="mb-1">
+                                            {{ comment }}
+                                        </li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <span class="text-secondary">
+                                    Нет комментариев
+                                </span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td
+                            colspan="20"
+                            class="text-center text-secondary py-4"
+                        >
+                            В форме нет образцов.
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-white py-3">
+        <h2 class="h4 mb-0">
+            Ответы участников
+        </h2>
+    </div>
+
+    {% if submissions %}
+        <div class="table-responsive">
+            <table class="table align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>ФИО</th>
+                        <th>Должность</th>
+                        <th>Дата</th>
+                        <th>Статус</th>
+                        <th></th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for submission in submissions %}
+                        <tr>
+                            <td>
+                                {{ submission.full_name }}
+                            </td>
+
+                            <td>
+                                {{ submission.position }}
+                            </td>
+
+                            <td>
+                                {{ submission.submitted_at|date:"d.m.Y H:i" }}
+                            </td>
+
+                            <td>
+                                {% if submission.is_excluded %}
+                                    <span class="badge text-bg-danger">
+                                        Исключён
+                                    </span>
+                                {% else %}
+                                    <span class="badge text-bg-success">
+                                        Учитывается
+                                    </span>
+                                {% endif %}
+                            </td>
+
+                            <td class="text-end">
+                                <a
+                                    href="{% url 'surveys:submission_detail' survey.pk submission.pk %}"
+                                    class="btn btn-sm btn-outline-primary"
+                                >
+                                    Открыть
+                                </a>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="card-body text-center py-5">
+            <p class="text-secondary mb-0">
+                Ответов пока нет.
+            </p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

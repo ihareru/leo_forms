@@ -1,8 +1,12 @@
 from django.contrib import admin
+from .models import (
+    Answer,
+    Submission,
+    Survey,
+    SurveyQuestion,
+    SurveySample
+)
 
-from .models import Survey
-from .models import SurveyQuestion
-from .models import SurveySample
 
 
 class SurveySampleInline(admin.TabularInline):
@@ -205,3 +209,107 @@ class SurveyQuestionAdmin(admin.ModelAdmin):
         "order",
         "id",
     )
+
+class AnswerInline(admin.TabularInline):
+    model = Answer
+    extra = 0
+    can_delete = False
+
+    fields = (
+        "sample",
+        "question",
+        "numeric_value",
+        "text_value",
+    )
+
+    readonly_fields = fields
+
+    ordering = (
+        "sample__order",
+        "question__order",
+    )
+
+
+@admin.register(Submission)
+class SubmissionAdmin(admin.ModelAdmin):
+    list_display = (
+        "full_name",
+        "position",
+        "survey",
+        "submitted_at",
+        "is_excluded",
+    )
+
+    list_filter = (
+        "survey",
+        "is_excluded",
+        "submitted_at",
+    )
+
+    search_fields = (
+        "full_name",
+        "position",
+        "survey__title",
+    )
+
+    readonly_fields = (
+        "public_id",
+        "survey",
+        "full_name",
+        "position",
+        "submitted_at",
+        "ip_address",
+        "user_agent",
+    )
+
+    ordering = (
+        "-submitted_at",
+    )
+
+    inlines = (
+        AnswerInline,
+    )
+
+
+@admin.register(Answer)
+class AnswerAdmin(admin.ModelAdmin):
+    list_display = (
+        "submission",
+        "sample",
+        "question",
+        "numeric_value",
+        "short_text_value",
+    )
+
+    list_filter = (
+        "question",
+        "sample__survey",
+    )
+
+    search_fields = (
+        "submission__full_name",
+        "sample__name",
+        "question__title",
+        "text_value",
+    )
+
+    readonly_fields = (
+        "submission",
+        "sample",
+        "question",
+        "numeric_value",
+        "text_value",
+        "created_at",
+    )
+
+    @admin.display(
+        description="Текстовый ответ",
+    )
+    def short_text_value(self, obj):
+        if not obj.text_value:
+            return "—"
+
+        if len(obj.text_value) <= 80:
+            return obj.text_value
+
+        return f"{obj.text_value[:80]}…"

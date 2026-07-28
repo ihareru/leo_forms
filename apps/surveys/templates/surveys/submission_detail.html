@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+
+{% block title %}
+    Ответ {{ submission.full_name }}
+{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <a
+        href="{% url 'surveys:survey_results' survey.pk %}"
+        class="text-decoration-none"
+    >
+        ← Вернуться к результатам
+    </a>
+</div>
+
+<div
+    class="d-flex flex-column flex-lg-row
+           justify-content-between gap-3 mb-4"
+>
+    <div>
+        <h1 class="h2 mb-1">
+            {{ submission.full_name }}
+        </h1>
+
+        <p class="text-secondary mb-1">
+            {{ submission.position }}
+        </p>
+
+        <p class="small text-secondary mb-0">
+            Отправлено:
+            {{ submission.submitted_at|date:"d.m.Y H:i:s" }}
+        </p>
+    </div>
+
+    <div>
+        {% if submission.is_excluded %}
+            <span class="badge text-bg-danger fs-6">
+                Исключён из расчётов
+            </span>
+        {% else %}
+            <span class="badge text-bg-success fs-6">
+                Учитывается в расчётах
+            </span>
+        {% endif %}
+    </div>
+</div>
+
+{% if submission.is_excluded %}
+    <div class="alert alert-warning">
+        <div class="fw-semibold">
+            Причина исключения
+        </div>
+
+        <div>
+            {{ submission.exclusion_reason|default:"Причина не указана" }}
+        </div>
+    </div>
+{% endif %}
+
+{% for block in sample_blocks %}
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white py-3">
+            <h2 class="h4 mb-1">
+                {{ block.sample.name }}
+            </h2>
+
+            {% if block.sample.description %}
+                <div class="text-secondary">
+                    {{ block.sample.description|linebreaksbr }}
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="table-responsive">
+            <table class="table align-middle mb-0">
+                <tbody>
+                    {% for row in block.answers %}
+                        <tr>
+                            <th style="width: 40%;">
+                                {{ row.question.title }}
+                            </th>
+
+                            <td>
+                                {% if row.answer %}
+                                    {% if row.answer.numeric_value is not None %}
+                                        {{ row.answer.numeric_value }}
+                                    {% elif row.answer.text_value %}
+                                        {{ row.answer.text_value|linebreaksbr }}
+                                    {% else %}
+                                        —
+                                    {% endif %}
+                                {% else %}
+                                    —
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+{% endfor %}
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        {% if submission.is_excluded %}
+            <form
+                method="post"
+                action="{% url 'surveys:submission_include' survey.pk submission.pk %}"
+            >
+                {% csrf_token %}
+
+                <button
+                    type="submit"
+                    class="btn btn-success"
+                >
+                    Вернуть в расчёты
+                </button>
+            </form>
+        {% else %}
+            <h2 class="h5">
+                Исключить ответ
+            </h2>
+
+            <p class="text-secondary">
+                Ответ останется в базе и Excel-отчёте,
+                но перестанет участвовать в расчёте средних значений.
+            </p>
+
+            <form
+                method="post"
+                action="{% url 'surveys:submission_exclude' survey.pk submission.pk %}"
+            >
+                {% csrf_token %}
+
+                <div class="mb-3">
+                    <label
+                        for="exclusion_reason"
+                        class="form-label"
+                    >
+                        Причина
+                    </label>
+
+                    <textarea
+                        name="exclusion_reason"
+                        id="exclusion_reason"
+                        class="form-control"
+                        rows="3"
+                        placeholder="Например: ответ отправлен ошибочно"
+                    ></textarea>
+                </div>
+
+                <button
+                    type="submit"
+                    class="btn btn-outline-danger"
+                >
+                    Исключить из расчётов
+                </button>
+            </form>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

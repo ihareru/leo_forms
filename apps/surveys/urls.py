@@ -8,6 +8,19 @@ app_name = "surveys"
 
 urlpatterns = [
     path(
+        "public/<uuid:public_id>/",
+        views.public_survey,
+        name="public_survey",
+    ),
+    path(
+        (
+            "public/<uuid:public_id>/"
+            "success/<uuid:submission_id>/"
+        ),
+        views.public_survey_success,
+        name="public_survey_success",
+    ),
+    path(
         "",
         views.survey_list,
         name="survey_list",
@@ -73,5 +86,54 @@ urlpatterns = [
         ),
         views.sample_move_down,
         name="sample_move_down",
+    ),
+    path(
+        "<int:survey_id>/results/",
+        views.survey_results,
+        name="survey_results",
+    ),
+    path(
+        "<int:survey_id>/qr/",
+        views.survey_qr_code,
+        name="survey_qr_code",
+    ),
+    path(
+        "<int:survey_id>/qr/download/",
+        views.survey_qr_code_download,
+        name="survey_qr_code_download",
+    ),
+    path(
+        "<int:survey_id>/qr/print/",
+        views.survey_qr_print,
+        name="survey_qr_print",
+    ),
+    path(
+        "<int:survey_id>/export/excel/",
+        views.survey_excel_export,
+        name="survey_excel_export",
+    ),
+    path(
+        (
+            "<int:survey_id>/submissions/"
+            "<int:submission_id>/"
+        ),
+        views.submission_detail,
+        name="submission_detail",
+    ),
+    path(
+        (
+            "<int:survey_id>/submissions/"
+            "<int:submission_id>/exclude/"
+        ),
+        views.submission_exclude,
+        name="submission_exclude",
+    ),
+    path(
+        (
+            "<int:survey_id>/submissions/"
+            "<int:submission_id>/include/"
+        ),
+        views.submission_include,
+        name="submission_include",
     ),
 ]

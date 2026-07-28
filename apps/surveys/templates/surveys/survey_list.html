@@ -48,6 +48,7 @@
 
                         <th>Статус</th>
                         <th>Образцов</th>
+                        <th>Ответов</th>
                         <th>Изменена</th>
                         <th></th>
                     </tr>
@@ -102,16 +103,29 @@
                             </td>
 
                             <td>
+                                {{ survey.submissions_total }}
+                            </td>
+
+                            <td>
                                 {{ survey.updated_at|date:"d.m.Y H:i" }}
                             </td>
 
                             <td class="text-end">
-                                <a
-                                    href="{% url 'surveys:survey_edit' survey.pk %}"
-                                    class="btn btn-sm btn-outline-primary"
-                                >
-                                    Открыть
-                                </a>
+                                <div class="d-flex justify-content-end gap-2">
+                                    <a
+                                        href="{% url 'surveys:survey_results' survey.pk %}"
+                                        class="btn btn-sm btn-outline-success"
+                                    >
+                                        Результаты
+                                    </a>
+
+                                    <a
+                                        href="{% url 'surveys:survey_edit' survey.pk %}"
+                                        class="btn btn-sm btn-outline-primary"
+                                    >
+                                        Открыть
+                                    </a>
+                                </div>
                             </td>
                         </tr>
                     {% endfor %}

@@ -406,3 +406,235 @@ class SurveyQuestion(models.Model):
             self.minimum_value = None
             self.maximum_value = None
             self.decimal_places = 0
+
+
+class Submission(models.Model):
+    """
+    Заполненная участником форма.
+
+    Участник может быть неавторизованным, поэтому его ФИО
+    и должность сохраняются непосредственно в отправке.
+    """
+
+    survey = models.ForeignKey(
+        Survey,
+        verbose_name="Форма",
+        related_name="submissions",
+        on_delete=models.PROTECT,
+    )
+
+    public_id = models.UUIDField(
+        verbose_name="Идентификатор ответа",
+        default=uuid.uuid4,
+        unique=True,
+        editable=False,
+        db_index=True,
+    )
+
+    full_name = models.CharField(
+        verbose_name="ФИО",
+        max_length=255,
+    )
+
+    position = models.CharField(
+        verbose_name="Должность",
+        max_length=255,
+    )
+
+    submitted_at = models.DateTimeField(
+        verbose_name="Дата заполнения",
+        auto_now_add=True,
+        db_index=True,
+    )
+
+    is_excluded = models.BooleanField(
+        verbose_name="Исключён из расчётов",
+        default=False,
+        db_index=True,
+    )
+
+    exclusion_reason = models.CharField(
+        verbose_name="Причина исключения",
+        max_length=500,
+        blank=True,
+    )
+
+    ip_address = models.GenericIPAddressField(
+        verbose_name="IP-адрес",
+        null=True,
+        blank=True,
+    )
+
+    user_agent = models.TextField(
+        verbose_name="Браузер",
+        blank=True,
+    )
+
+    class Meta:
+        verbose_name = "Ответ участника"
+        verbose_name_plural = "Ответы участников"
+        ordering = [
+            "-submitted_at",
+        ]
+        indexes = [
+            models.Index(
+                fields=[
+                    "survey",
+                    "is_excluded",
+                ],
+                name="submission_survey_excl_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.full_name}: "
+            f"{self.survey.title} "
+            f"({self.submitted_at:%d.%m.%Y %H:%M})"
+        )
+
+
+class Answer(models.Model):
+    """
+    Отдельный ответ на вопрос по конкретному образцу.
+    """
+
+    submission = models.ForeignKey(
+        Submission,
+        verbose_name="Заполнение",
+        related_name="answers",
+        on_delete=models.CASCADE,
+    )
+
+    sample = models.ForeignKey(
+        SurveySample,
+        verbose_name="Образец",
+        related_name="answers",
+        on_delete=models.PROTECT,
+    )
+
+    question = models.ForeignKey(
+        SurveyQuestion,
+        verbose_name="Вопрос",
+        related_name="answers",
+        on_delete=models.PROTECT,
+    )
+
+    numeric_value = models.DecimalField(
+        verbose_name="Числовая оценка",
+        max_digits=3,
+        decimal_places=1,
+        null=True,
+        blank=True,
+    )
+
+    text_value = models.TextField(
+        verbose_name="Текстовый ответ",
+        blank=True,
+    )
+
+    created_at = models.DateTimeField(
+        verbose_name="Дата создания",
+        auto_now_add=True,
+    )
+
+    class Meta:
+        verbose_name = "Ответ"
+        verbose_name_plural = "Ответы"
+        ordering = [
+            "sample__order",
+            "question__order",
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "submission",
+                    "sample",
+                    "question",
+                ],
+                name="unique_answer_per_sample_question",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=[
+                    "sample",
+                    "question",
+                ],
+                name="answer_sample_question_idx",
+            ),
+        ]
+
+    def __str__(self):
+        value = (
+            self.numeric_value
+            if self.numeric_value is not None
+            else self.text_value
+        )
+
+        return (
+            f"{self.submission.full_name}: "
+            f"{self.sample.name} — "
+            f"{self.question.title}: {value}"
+        )
+
+    def clean(self):
+        super().clean()
+
+        if self.sample.survey_id != self.submission.survey_id:
+            raise ValidationError(
+                "Образец относится к другой форме."
+            )
+
+        if self.question.survey_id != self.submission.survey_id:
+            raise ValidationError(
+                "Вопрос относится к другой форме."
+            )
+
+        if (
+            self.question.question_type
+            == SurveyQuestion.QuestionType.RATING
+        ):
+            if self.numeric_value is None:
+                raise ValidationError(
+                    {
+                        "numeric_value": (
+                            "Для баллового вопроса "
+                            "необходимо указать оценку."
+                        )
+                    }
+                )
+
+            if (
+                self.question.minimum_value is not None
+                and self.numeric_value
+                < self.question.minimum_value
+            ):
+                raise ValidationError(
+                    {
+                        "numeric_value": (
+                            "Оценка меньше допустимого значения."
+                        )
+                    }
+                )
+
+            if (
+                self.question.maximum_value is not None
+                and self.numeric_value
+                > self.question.maximum_value
+            ):
+                raise ValidationError(
+                    {
+                        "numeric_value": (
+                            "Оценка больше допустимого значения."
+                        )
+                    }
+                )
+
+            self.text_value = ""
+
+        if (
+            self.question.question_type
+            == SurveyQuestion.QuestionType.TEXT
+        ):
+            self.numeric_value = None

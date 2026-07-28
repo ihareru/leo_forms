@@ -2,8 +2,7 @@ from decimal import Decimal
 
 from django import forms
 
-from .models import Survey
-from .models import SurveySample
+from .models import Survey, SurveyQuestion, SurveySample
 
 
 class RatingDecimalField(forms.DecimalField):
@@ -139,3 +138,138 @@ class SurveySampleForm(forms.ModelForm):
                 }
             ),
         }
+
+
+class PublicSurveyForm(forms.Form):
+    """
+    Динамическая форма для заполнения участником.
+
+    Для каждого активного образца создаётся отдельный набор
+    активных вопросов.
+    """
+
+    full_name = forms.CharField(
+        label="ФИО",
+        max_length=255,
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "autocomplete": "name",
+                "placeholder": "Иванов Иван Иванович",
+            }
+        ),
+    )
+
+    position = forms.CharField(
+        label="Должность",
+        max_length=255,
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "autocomplete": "organization-title",
+                "placeholder": "Инженер-технолог",
+            }
+        ),
+    )
+
+    def __init__(self, *args, survey, **kwargs):
+        self.survey = survey
+
+        super().__init__(*args, **kwargs)
+
+        self.samples = list(
+            survey.samples.filter(
+                is_active=True,
+            ).order_by(
+                "order",
+                "id",
+            )
+        )
+
+        self.questions = list(
+            survey.questions.filter(
+                is_active=True,
+            ).order_by(
+                "order",
+                "id",
+            )
+        )
+
+        for sample in self.samples:
+            for question in self.questions:
+                field_name = self.get_answer_field_name(
+                    sample_id=sample.pk,
+                    question_id=question.pk,
+                )
+
+                if (
+                    question.question_type
+                    == SurveyQuestion.QuestionType.RATING
+                ):
+                    self.fields[field_name] = RatingDecimalField(
+                        label=question.title,
+                        required=question.is_required,
+                        min_value=question.minimum_value,
+                        max_value=question.maximum_value,
+                        help_text=(
+                            f"Оценка от "
+                            f"{question.minimum_value} "
+                            f"до {question.maximum_value}"
+                        ),
+                    )
+                else:
+                    self.fields[field_name] = forms.CharField(
+                        label=question.title,
+                        required=question.is_required,
+                        widget=forms.Textarea(
+                            attrs={
+                                "class": "form-control",
+                                "rows": 3,
+                                "placeholder": (
+                                    "Комментарий необязателен"
+                                ),
+                            }
+                        ),
+                    )
+
+    @staticmethod
+    def get_answer_field_name(
+        sample_id,
+        question_id,
+    ):
+        return (
+            f"sample_{sample_id}_"
+            f"question_{question_id}"
+        )
+
+    def get_sample_blocks(self):
+        """
+        Возвращает данные для удобного вывода в шаблоне.
+        """
+
+        blocks = []
+
+        for sample in self.samples:
+            fields = []
+
+            for question in self.questions:
+                field_name = self.get_answer_field_name(
+                    sample_id=sample.pk,
+                    question_id=question.pk,
+                )
+
+                fields.append(
+                    {
+                        "question": question,
+                        "field": self[field_name],
+                    }
+                )
+
+            blocks.append(
+                {
+                    "sample": sample,
+                    "fields": fields,
+                }
+            )
+
+        return blocks

@@ -50,6 +50,12 @@
     </div>
 
     <div class="d-flex flex-wrap gap-2">
+        <a
+            href="{% url 'surveys:survey_results' survey.pk %}"
+            class="btn btn-primary"
+        >
+            Результаты
+        </a>
         {% if survey.status == "DRAFT" %}
             <form
                 method="post"
@@ -327,16 +333,45 @@
                     </p>
                 {% else %}
                     <p class="text-secondary">
-                        Идентификатор формы:
+                        Ссылка для участников:
                     </p>
 
                     <div class="bg-light rounded p-3 text-break">
-                        {{ survey.public_id }}
+                        <a
+                            href="{% url 'public_survey' survey.public_id %}"
+                            target="_blank"
+                            rel="noopener"
+                        >
+                            {{ request.scheme }}://{{ request.get_host }}{% url 'public_survey' survey.public_id %}
+                        </a>
                     </div>
 
-                    <p class="small text-secondary mt-3 mb-0">
-                        Рабочую ссылку и QR-код добавим на следующем этапе.
-                    </p>
+                    <div class="d-flex flex-wrap gap-2 mt-3">
+                        <a
+                            href="{% url 'public_survey' survey.public_id %}"
+                            target="_blank"
+                            rel="noopener"
+                            class="btn btn-outline-primary"
+                        >
+                            Открыть форму
+                        </a>
+
+                        <a
+                            href="{% url 'surveys:survey_qr_print' survey.pk %}"
+                            target="_blank"
+                            rel="noopener"
+                            class="btn btn-outline-secondary"
+                        >
+                            QR-код и печать
+                        </a>
+
+                        <a
+                            href="{% url 'surveys:survey_qr_code_download' survey.pk %}"
+                            class="btn btn-outline-secondary"
+                        >
+                            Скачать QR
+                        </a>
+                    </div>
                 {% endif %}
             </div>
         </div>

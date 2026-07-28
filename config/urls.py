@@ -2,12 +2,26 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
+from apps.surveys import views as survey_views
 
 
 urlpatterns = [
     path(
         "admin/",
         admin.site.urls,
+    ),
+    path(
+        "f/<uuid:public_id>/",
+        survey_views.public_survey,
+        name="public_survey",
+    ),
+    path(
+        (
+            "f/<uuid:public_id>/"
+            "success/<uuid:submission_id>/"
+        ),
+        survey_views.public_survey_success,
+        name="public_survey_success",
     ),
     path(
         "forms/",

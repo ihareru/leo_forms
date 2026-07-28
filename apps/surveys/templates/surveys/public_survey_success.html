@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}
+    Ответ отправлен
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-md-8 col-lg-6">
+        <div class="card shadow-sm">
+            <div class="card-body p-5 text-center">
+                <div class="display-4 mb-3">
+                    ✓
+                </div>
+
+                <h1 class="h2">
+                    Ответ отправлен
+                </h1>
+
+                <p class="text-secondary">
+                    Спасибо, {{ submission.full_name }}.
+                    Ваши оценки сохранены.
+                </p>
+
+                <p class="small text-secondary mb-0">
+                    Форма: {{ survey.title }}
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

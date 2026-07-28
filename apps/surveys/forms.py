@@ -2,6 +2,9 @@ from decimal import Decimal
 
 from django import forms
 
+from .models import Survey
+from .models import SurveySample
+
 
 class RatingDecimalField(forms.DecimalField):
     """
@@ -50,3 +53,89 @@ class RatingDecimalField(forms.DecimalField):
             value = value.replace(",", ".")
 
         return super().to_python(value)
+
+
+class SurveyForm(forms.ModelForm):
+    """
+    Форма создания и редактирования опроса.
+
+    Статус не редактируется напрямую.
+    Для изменения статуса используются отдельные кнопки.
+    """
+
+    class Meta:
+        model = Survey
+
+        fields = (
+            "title",
+            "description",
+            "allow_multiple_submissions",
+        )
+
+        widgets = {
+            "title": forms.TextInput(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": (
+                        "Например: Дегустация супа-пюре"
+                    ),
+                    "autofocus": True,
+                }
+            ),
+            "description": forms.Textarea(
+                attrs={
+                    "class": "form-control",
+                    "rows": 4,
+                    "placeholder": (
+                        "Краткое описание формы для участников"
+                    ),
+                }
+            ),
+            "allow_multiple_submissions": (
+                forms.CheckboxInput(
+                    attrs={
+                        "class": "form-check-input",
+                    }
+                )
+            ),
+        }
+
+
+class SurveySampleForm(forms.ModelForm):
+    """
+    Форма создания и редактирования образца.
+    """
+
+    class Meta:
+        model = SurveySample
+
+        fields = (
+            "name",
+            "description",
+            "is_active",
+        )
+
+        widgets = {
+            "name": forms.TextInput(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": "Например: Образец №1",
+                    "autofocus": True,
+                }
+            ),
+            "description": forms.Textarea(
+                attrs={
+                    "class": "form-control",
+                    "rows": 5,
+                    "placeholder": (
+                        "Название продукции, рецептура, "
+                        "условия хранения и другие сведения"
+                    ),
+                }
+            ),
+            "is_active": forms.CheckboxInput(
+                attrs={
+                    "class": "form-check-input",
+                }
+            ),
+        }

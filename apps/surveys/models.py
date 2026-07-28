@@ -164,13 +164,20 @@ class Survey(models.Model):
     def archive(self):
         """
         Переводит форму в архив.
+
+        Если форма была опубликована, дата завершения сбора
+        фиксируется автоматически.
         """
 
         self.status = self.Status.ARCHIVED
 
+        if self.closed_at is None:
+            self.closed_at = timezone.now()
+
         self.save(
             update_fields=[
                 "status",
+                "closed_at",
                 "updated_at",
             ]
         )

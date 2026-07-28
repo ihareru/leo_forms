@@ -10,6 +10,10 @@ urlpatterns = [
         admin.site.urls,
     ),
     path(
+        "forms/",
+        include("apps.surveys.urls"),
+    ),
+    path(
         "",
         include("apps.accounts.urls"),
     ),

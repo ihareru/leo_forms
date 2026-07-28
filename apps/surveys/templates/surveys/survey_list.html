@@ -112,6 +112,22 @@
 
                             <td class="text-end">
                                 <div class="d-flex justify-content-end gap-2">
+
+                                    <form
+                                        method="post"
+                                        action="{% url 'surveys:survey_copy' survey.pk %}"
+                                    >
+                                        {% csrf_token %}
+
+                                        <button
+                                            type="submit"
+                                            class="btn btn-sm btn-outline-secondary"
+                                            title="Создать копию формы"
+                                        >
+                                            Копировать
+                                        </button>
+                                    </form>
+
                                     <a
                                         href="{% url 'surveys:survey_results' survey.pk %}"
                                         class="btn btn-sm btn-outline-success"

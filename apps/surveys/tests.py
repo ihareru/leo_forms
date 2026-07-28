@@ -1,18 +1,28 @@
+import tempfile
+from datetime import date
 from decimal import Decimal
+from io import BytesIO
+from docx import Document
 from django.urls import reverse
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
-from django.test import TestCase
+from django.core.files.storage import default_storage
+from django.test import TestCase, override_settings
 
-from .forms import RatingDecimalField, PublicSurveyForm
+from .forms import RatingDecimalField, PublicSurveyForm, SurveyProtocolForm
 from .models import (
     Survey,
     SurveyQuestion,
     SurveySample,
     Answer,
     Submission,
+    GeneratedProtocol,
+    SurveyProtocol,
 )
 from .services.results import get_survey_results
+from .services.docx_protocols import build_protocol_docx, generate_and_save_protocol
+from .services.protocol_defaults import build_protocol_initial_data, get_next_protocol_number
+from .services.copying import copy_survey
 
 
 User = get_user_model()
@@ -933,3 +943,569 @@ class SubmissionManagementTests(TestCase):
             "",
         )
 
+class SurveyProtocolTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="protocol_owner",
+            password="StrongPassword123!",
+        )
+
+        self.survey = Survey.objects.create(
+            owner=self.user,
+            title="Протокольная дегустация",
+        )
+
+        self.sample = SurveySample.objects.create(
+            survey=self.survey,
+            name="Образец №1",
+            description="Описание образца",
+            order=10,
+        )
+
+        self.submission = Submission.objects.create(
+            survey=self.survey,
+            full_name="Иванов Иван Иванович",
+            position="Инженер-технолог",
+        )
+
+        for question in self.survey.questions.all():
+            if (
+                question.question_type
+                == SurveyQuestion.QuestionType.RATING
+            ):
+                Answer.objects.create(
+                    submission=self.submission,
+                    sample=self.sample,
+                    question=question,
+                    numeric_value=Decimal("4.5"),
+                )
+            else:
+                Answer.objects.create(
+                    submission=self.submission,
+                    sample=self.sample,
+                    question=question,
+                    text_value="Хороший вкус",
+                )
+
+        self.survey.publish()
+        self.survey.close()
+
+        self.protocol = SurveyProtocol.objects.create(
+            survey=self.survey,
+            document_code="КК-Ф-020",
+            protocol_number="304",
+            protocol_date=date(2026, 5, 21),
+            responsible_employee="Мальцева Е.С.",
+            tasting_goal=(
+                "Органолептическая оценка продукции"
+            ),
+            room_conditions=(
+                "Температура воздуха +18 – +25 °С."
+            ),
+            product_conditions=(
+                "Температура продукции +55 ± 5 °С."
+            ),
+            conclusion=(
+                "Образец получил высокие оценки."
+            ),
+            signer_position="Нач. ОРП",
+            signer_name="Холина О.В.",
+        )
+
+    def test_protocol_is_complete(self):
+        self.assertTrue(
+            self.protocol.is_complete,
+        )
+
+    def test_protocol_docx_is_created(self):
+        document_data = build_protocol_docx(
+            survey=self.survey,
+            protocol=self.protocol,
+        )
+
+        self.assertTrue(
+            document_data.startswith(b"PK"),
+        )
+
+        self.assertGreater(
+            len(document_data),
+            1000,
+        )
+
+    def test_protocol_page_available_after_close(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            reverse(
+                "surveys:survey_protocol_edit",
+                args=[
+                    self.survey.pk,
+                ],
+            ),
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertContains(
+            response,
+            "Протокол дегустации",
+        )
+
+    def test_protocol_page_unavailable_for_published_survey(self):
+        self.survey.status = Survey.Status.PUBLISHED
+        self.survey.save(
+            update_fields=[
+                "status",
+                "updated_at",
+            ]
+        )
+
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            reverse(
+                "surveys:survey_protocol_edit",
+                args=[
+                    self.survey.pk,
+                ],
+            ),
+        )
+
+        self.assertRedirects(
+            response,
+            reverse(
+                "surveys:survey_results",
+                args=[
+                    self.survey.pk,
+                ],
+            ),
+        )
+
+    def test_protocol_date_is_written_to_docx(self):
+        document_data = build_protocol_docx(
+            survey=self.survey,
+            protocol=self.protocol,
+        )
+
+        document = Document(BytesIO(document_data))
+
+        document_text = "\n".join(paragraph.text for paragraph in document.paragraphs)
+
+        self.assertIn(
+            "«21» мая 2026 г.",
+            document_text,
+        )
+        
+
+class GeneratedProtocolTests(TestCase):
+    def setUp(self):
+        self.temporary_media = tempfile.TemporaryDirectory()
+
+        self.override = override_settings(
+            MEDIA_ROOT=self.temporary_media.name,
+        )
+
+        self.override.enable()
+
+        self.user = User.objects.create_user(
+            username="generated_protocol_owner",
+            password="StrongPassword123!",
+        )
+
+        self.survey = Survey.objects.create(
+            owner=self.user,
+            title="Форма для DOCX",
+        )
+
+        self.sample = SurveySample.objects.create(
+            survey=self.survey,
+            name="Образец №1",
+            order=10,
+        )
+
+        submission = Submission.objects.create(
+            survey=self.survey,
+            full_name="Петров Пётр Петрович",
+            position="Технолог",
+        )
+
+        for question in self.survey.questions.all():
+            if (
+                question.question_type
+                == SurveyQuestion.QuestionType.RATING
+            ):
+                Answer.objects.create(
+                    submission=submission,
+                    sample=self.sample,
+                    question=question,
+                    numeric_value=Decimal("5.0"),
+                )
+            else:
+                Answer.objects.create(
+                    submission=submission,
+                    sample=self.sample,
+                    question=question,
+                    text_value="Комментарий",
+                )
+
+        self.protocol = SurveyProtocol.objects.create(
+            survey=self.survey,
+            protocol_number="500",
+            protocol_date=date(2026, 7, 28),
+            responsible_employee="Сотрудник",
+            tasting_goal="Оценка продукции",
+            conclusion="Высокие оценки",
+            signer_position="Начальник",
+            signer_name="Иванов И.И.",
+        )
+
+    def tearDown(self):
+        self.override.disable()
+        self.temporary_media.cleanup()
+
+    def test_new_versions_are_created(self):
+        first = generate_and_save_protocol(
+            survey=self.survey,
+            protocol=self.protocol,
+            user=self.user,
+        )
+
+        second = generate_and_save_protocol(
+            survey=self.survey,
+            protocol=self.protocol,
+            user=self.user,
+        )
+
+        self.assertEqual(
+            first.version,
+            1,
+        )
+
+        self.assertEqual(
+            second.version,
+            2,
+        )
+
+        self.assertEqual(
+            GeneratedProtocol.objects.count(),
+            2,
+        )
+
+        self.assertTrue(
+            first.file.name.endswith(
+                ".docx"
+            )
+        )
+
+        self.assertTrue(
+            default_storage.exists(
+                first.file.name,
+            )
+        )
+
+class ProtocolDefaultsTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="protocol_defaults_owner",
+            password="StrongPassword123!",
+        )
+
+        self.previous_survey = Survey.objects.create(
+            owner=self.user,
+            title="Предыдущая форма",
+        )
+
+        self.previous_protocol = SurveyProtocol.objects.create(
+            survey=self.previous_survey,
+            document_code="КК-Ф-020",
+            protocol_number="304",
+            protocol_date=date(2026, 5, 21),
+            responsible_employee="Мальцева Е.С.",
+            tasting_goal="Органолептическая оценка",
+            room_conditions="Температура +18 – +25 °С.",
+            product_conditions="Продукт +55 ± 5 °С.",
+            conclusion="Образцы получили высокие оценки.",
+            signer_position="Нач. ОРП",
+            signer_name="Холина О.В.",
+        )
+
+        self.new_survey = Survey.objects.create(
+            owner=self.user,
+            title="Новая форма",
+        )
+
+    def test_next_protocol_number(self):
+        self.assertEqual(
+            get_next_protocol_number(),
+            "305",
+        )
+
+    def test_previous_fields_are_copied(self):
+        initial_data = build_protocol_initial_data(
+            survey=self.new_survey,
+        )
+
+        self.assertEqual(
+            initial_data["protocol_number"],
+            "305",
+        )
+
+        self.assertEqual(
+            initial_data["responsible_employee"],
+            "Мальцева Е.С.",
+        )
+
+        self.assertEqual(
+            initial_data["tasting_goal"],
+            "Органолептическая оценка",
+        )
+
+        self.assertEqual(
+            initial_data["room_conditions"],
+            "Температура +18 – +25 °С.",
+        )
+
+        self.assertEqual(
+            initial_data["product_conditions"],
+            "Продукт +55 ± 5 °С.",
+        )
+
+        self.assertEqual(
+            initial_data["conclusion"],
+            "Образцы получили высокие оценки.",
+        )
+
+        self.assertEqual(
+            initial_data["signer_position"],
+            "Нач. ОРП",
+        )
+
+        self.assertEqual(
+            initial_data["signer_name"],
+            "Холина О.В.",
+        )
+
+    def test_protocol_date_field_accepts_html_date(self):
+        form = SurveyProtocolForm(
+            data={
+                "document_code": "КК-Ф-020",
+                "protocol_number": "305",
+                "protocol_date": "2026-07-28",
+                "responsible_employee": "Сотрудник",
+                "tasting_goal": "Цель",
+                "room_conditions": "Условия",
+                "product_conditions": "Температура",
+                "conclusion": "Заключение",
+                "signer_position": "Начальник",
+                "signer_name": "Иванов И.И.",
+            }
+        )
+
+        self.assertTrue(
+            form.is_valid(),
+            form.errors,
+        )
+
+        self.assertEqual(
+            form.cleaned_data["protocol_date"],
+            date(2026, 7, 28),
+        )
+
+    def test_protocol_date_is_rendered_for_html_input(self):
+        protocol = SurveyProtocol.objects.create(
+            survey=self.new_survey,
+            protocol_number="305",
+            protocol_date=date(2026, 7, 28),
+        )
+
+        form = SurveyProtocolForm(
+            instance=protocol,
+        )
+
+        rendered_date = str(
+            form["protocol_date"]
+        )
+
+        self.assertIn(
+            'value="2026-07-28"',
+            rendered_date,
+        )
+
+
+class SurveyCopyTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="copy_owner",
+            password="StrongPassword123!",
+        )
+
+        self.source_survey = Survey.objects.create(
+            owner=self.user,
+            title="Исходная форма",
+            description="Описание исходной формы",
+            allow_multiple_submissions=True,
+        )
+
+        self.first_sample = SurveySample.objects.create(
+            survey=self.source_survey,
+            name="Образец №1",
+            description="Первый образец",
+            order=10,
+        )
+
+        self.second_sample = SurveySample.objects.create(
+            survey=self.source_survey,
+            name="Образец №2",
+            description="Второй образец",
+            order=20,
+        )
+
+    def test_survey_is_copied_as_draft(self):
+        copied_survey = copy_survey(
+            source_survey=self.source_survey,
+            owner=self.user,
+        )
+
+        self.assertEqual(
+            copied_survey.status,
+            Survey.Status.DRAFT,
+        )
+
+        self.assertEqual(
+            copied_survey.owner,
+            self.user,
+        )
+
+        self.assertEqual(
+            copied_survey.title,
+            "Копия — Исходная форма",
+        )
+
+        self.assertNotEqual(
+            copied_survey.public_id,
+            self.source_survey.public_id,
+        )
+
+        self.assertIsNone(
+            copied_survey.published_at,
+        )
+
+        self.assertIsNone(
+            copied_survey.closed_at,
+        )
+
+    def test_samples_are_copied(self):
+        copied_survey = copy_survey(
+            source_survey=self.source_survey,
+            owner=self.user,
+        )
+
+        copied_samples = list(
+            copied_survey.samples.values_list(
+                "name",
+                "description",
+                "order",
+            )
+        )
+
+        self.assertEqual(
+            copied_samples,
+            [
+                (
+                    "Образец №1",
+                    "Первый образец",
+                    10,
+                ),
+                (
+                    "Образец №2",
+                    "Второй образец",
+                    20,
+                ),
+            ],
+        )
+
+    def test_questions_are_copied_once(self):
+        source_question_count = (
+            self.source_survey.questions.count()
+        )
+
+        copied_survey = copy_survey(
+            source_survey=self.source_survey,
+            owner=self.user,
+        )
+
+        self.assertEqual(
+            copied_survey.questions.count(),
+            source_question_count,
+        )
+
+    def test_submissions_are_not_copied(self):
+        Submission.objects.create(
+            survey=self.source_survey,
+            full_name="Участник",
+            position="Технолог",
+        )
+
+        copied_survey = copy_survey(
+            source_survey=self.source_survey,
+            owner=self.user,
+        )
+
+        self.assertEqual(
+            copied_survey.submissions.count(),
+            0,
+        )
+
+    def test_protocol_is_not_copied(self):
+        SurveyProtocol.objects.create(
+            survey=self.source_survey,
+            protocol_number="304",
+            protocol_date=date(2026, 5, 21),
+        )
+
+        copied_survey = copy_survey(
+            source_survey=self.source_survey,
+            owner=self.user,
+        )
+
+        self.assertFalse(
+            SurveyProtocol.objects.filter(
+                survey=copied_survey,
+            ).exists()
+        )
+
+    def test_copy_view_creates_form(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse(
+                "surveys:survey_copy",
+                args=[
+                    self.source_survey.pk,
+                ],
+            ),
+        )
+
+        copied_survey = (
+            Survey.objects
+            .exclude(pk=self.source_survey.pk)
+            .get()
+        )
+
+        self.assertRedirects(
+            response,
+            reverse(
+                "surveys:survey_edit",
+                args=[
+                    copied_survey.pk,
+                ],
+            ),
+        )
+
+        self.assertEqual(
+            copied_survey.status,
+            Survey.Status.DRAFT,
+        )

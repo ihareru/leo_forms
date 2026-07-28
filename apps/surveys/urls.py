@@ -36,6 +36,11 @@ urlpatterns = [
         name="survey_edit",
     ),
     path(
+        "<int:survey_id>/copy/",
+        views.survey_copy,
+        name="survey_copy",
+    ),
+    path(
         "<int:survey_id>/publish/",
         views.survey_publish,
         name="survey_publish",
@@ -135,5 +140,23 @@ urlpatterns = [
         ),
         views.submission_include,
         name="submission_include",
+    ),
+    path(
+        "<int:survey_id>/protocol/",
+        views.survey_protocol_edit,
+        name="survey_protocol_edit",
+    ),
+    path(
+        "<int:survey_id>/protocol/generate/",
+        views.survey_protocol_generate,
+        name="survey_protocol_generate",
+    ),
+    path(
+        (
+            "<int:survey_id>/protocols/"
+            "<int:protocol_id>/download/"
+        ),
+        views.generated_protocol_download,
+        name="generated_protocol_download",
     ),
 ]

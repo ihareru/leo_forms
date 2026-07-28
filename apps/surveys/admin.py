@@ -4,9 +4,10 @@ from .models import (
     Submission,
     Survey,
     SurveyQuestion,
-    SurveySample
+    SurveySample,
+    GeneratedProtocol,
+    SurveyProtocol,
 )
-
 
 
 class SurveySampleInline(admin.TabularInline):
@@ -313,3 +314,64 @@ class AnswerAdmin(admin.ModelAdmin):
             return obj.text_value
 
         return f"{obj.text_value[:80]}…"
+
+@admin.register(SurveyProtocol)
+class SurveyProtocolAdmin(admin.ModelAdmin):
+    list_display = (
+        "protocol_number",
+        "survey",
+        "protocol_date",
+        "responsible_employee",
+        "updated_at",
+    )
+
+    search_fields = (
+        "protocol_number",
+        "survey__title",
+        "responsible_employee",
+        "signer_name",
+    )
+
+    list_filter = (
+        "protocol_date",
+        "updated_at",
+    )
+
+    autocomplete_fields = (
+        "survey",
+    )
+
+
+@admin.register(GeneratedProtocol)
+class GeneratedProtocolAdmin(admin.ModelAdmin):
+    list_display = (
+        "survey",
+        "protocol_number",
+        "version",
+        "generated_by",
+        "generated_at",
+    )
+
+    search_fields = (
+        "survey__title",
+        "protocol_number",
+        "generated_by__username",
+        "generated_by__last_name",
+    )
+
+    list_filter = (
+        "generated_at",
+    )
+
+    readonly_fields = (
+        "survey",
+        "protocol_number",
+        "version",
+        "file",
+        "generated_by",
+        "generated_at",
+    )
+
+    ordering = (
+        "-generated_at",
+    )

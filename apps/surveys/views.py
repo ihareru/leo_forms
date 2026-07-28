@@ -1,15 +1,15 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ValidationError, ObjectDoesNotExist
 from django.db import transaction
 from django.db.models import Count, Max
 from django.db.models.deletion import ProtectedError
 from django.shortcuts import redirect, render, get_object_or_404
 from django.views.decorators.http import require_POST
-from django.http import Http404, HttpResponse
+from django.http import Http404, HttpResponse, FileResponse
 from django.urls import reverse
-from .forms import SurveyForm, SurveySampleForm, PublicSurveyForm
-from .models import Survey, SurveySample, Submission
+from .forms import SurveyForm, SurveySampleForm, PublicSurveyForm, SurveyProtocolForm
+from .models import Survey, SurveySample, Submission, GeneratedProtocol, SurveyProtocol
 from .services.access import (
     get_survey_available_to_user,
     get_surveys_available_to_user
@@ -18,6 +18,9 @@ from .services.submissions import create_submission_from_form
 from .services.excel_reports import build_survey_excel_report
 from .services.qr_codes import generate_qr_code_png
 from .services.results import get_survey_results
+from .services.docx_protocols import generate_and_save_protocol
+from .services.protocol_defaults import build_protocol_initial_data
+from .services.copying import copy_survey
 
 
 @login_required
@@ -1023,3 +1026,284 @@ def survey_excel_export(request, survey_id):
     )
 
     return response
+
+
+@login_required
+def survey_protocol_edit(request, survey_id):
+    """
+    Создание и редактирование реквизитов протокола.
+    """
+
+    survey = get_survey_available_to_user(
+        request.user,
+        survey_id,
+    )
+
+    if survey.status not in {
+        Survey.Status.CLOSED,
+        Survey.Status.ARCHIVED,
+    }:
+        messages.error(
+            request,
+            (
+                "Реквизиты протокола можно заполнять "
+                "только после закрытия сбора ответов."
+            ),
+        )
+
+        return redirect(
+            "surveys:survey_results",
+            survey_id=survey.pk,
+        )
+
+    try:
+        protocol = survey.protocol
+    except SurveyProtocol.DoesNotExist:
+        initial_data = build_protocol_initial_data(
+            survey=survey,
+        )
+
+        protocol = SurveyProtocol.objects.create(
+            survey=survey,
+            **initial_data,
+        )
+
+    if request.method == "POST":
+        form = SurveyProtocolForm(
+            request.POST,
+            instance=protocol,
+        )
+
+        if form.is_valid():
+            form.save()
+
+            messages.success(
+                request,
+                "Реквизиты протокола сохранены.",
+            )
+
+            return redirect(
+                "surveys:survey_protocol_edit",
+                survey_id=survey.pk,
+            )
+    else:
+        form = SurveyProtocolForm(
+            instance=protocol,
+        )
+
+    generated_protocols = (
+        survey.generated_protocols
+        .select_related(
+            "generated_by",
+        )
+        .order_by(
+            "-version",
+        )
+    )
+
+    context = {
+        "survey": survey,
+        "protocol": protocol,
+        "form": form,
+        "generated_protocols": generated_protocols,
+    }
+
+    return render(
+        request,
+        "surveys/survey_protocol_form.html",
+        context,
+    )
+
+
+@login_required
+@require_POST
+def survey_protocol_generate(
+    request,
+    survey_id,
+):
+    """
+    Формирует новую версию DOCX-протокола.
+    """
+
+    survey = get_survey_available_to_user(
+        request.user,
+        survey_id,
+    )
+
+    if survey.status not in {
+        Survey.Status.CLOSED,
+        Survey.Status.ARCHIVED,
+    }:
+        messages.error(
+            request,
+            (
+                "Протокол можно сформировать только "
+                "после закрытия сбора ответов."
+            ),
+        )
+
+        return redirect(
+            "surveys:survey_results",
+            survey_id=survey.pk,
+        )
+
+    try:
+        protocol = survey.protocol
+    except ObjectDoesNotExist:
+        messages.error(
+            request,
+            "Сначала заполните реквизиты протокола.",
+        )
+
+        return redirect(
+            "surveys:survey_protocol_edit",
+            survey_id=survey.pk,
+        )
+
+    form = SurveyProtocolForm(
+        request.POST,
+        instance=protocol,
+    )
+
+    if not form.is_valid():
+        messages.error(
+            request,
+            (
+                "Протокол не сформирован. "
+                "Исправьте ошибки в реквизитах."
+            ),
+        )
+
+        generated_protocols = (
+            survey.generated_protocols
+            .select_related(
+                "generated_by",
+            )
+            .order_by(
+                "-version",
+            )
+        )
+
+        return render(
+            request,
+            "surveys/survey_protocol_form.html",
+            {
+                "survey": survey,
+                "protocol": protocol,
+                "form": form,
+                "generated_protocols": (
+                    generated_protocols
+                ),
+            },
+        )
+
+    protocol = form.save()
+
+    if (
+        survey.submissions.filter(
+            is_excluded=False,
+        ).count()
+        == 0
+    ):
+        messages.error(
+            request,
+            (
+                "Нельзя сформировать протокол: "
+                "нет ответов, участвующих в расчётах."
+            ),
+        )
+
+        return redirect(
+            "surveys:survey_protocol_edit",
+            survey_id=survey.pk,
+        )
+
+    generated_protocol = (
+        generate_and_save_protocol(
+            survey=survey,
+            protocol=protocol,
+            user=request.user,
+        )
+    )
+
+    messages.success(
+        request,
+        (
+            "Протокол сформирован. "
+            f"Версия: {generated_protocol.version}."
+        ),
+    )
+
+    return redirect(
+        "surveys:survey_protocol_edit",
+        survey_id=survey.pk,
+    )
+
+
+@login_required
+def generated_protocol_download(
+    request,
+    survey_id,
+    protocol_id,
+):
+    """
+    Скачивание ранее сформированной версии протокола.
+    """
+
+    survey = get_survey_available_to_user(
+        request.user,
+        survey_id,
+    )
+
+    generated_protocol = get_object_or_404(
+        survey.generated_protocols,
+        pk=protocol_id,
+    )
+
+    filename = (
+        f"protocol_"
+        f"{generated_protocol.protocol_number}_"
+        f"v{generated_protocol.version}.docx"
+    )
+
+    return FileResponse(
+        generated_protocol.file.open("rb"),
+        as_attachment=True,
+        filename=filename,
+        content_type=(
+            "application/vnd.openxmlformats-officedocument."
+            "wordprocessingml.document"
+        ),
+    )
+
+@login_required
+@require_POST
+def survey_copy(request, survey_id):
+    """
+    Создаёт копию доступной пользователю формы.
+
+    Владельцем копии становится текущий пользователь.
+    """
+
+    source_survey = get_survey_available_to_user(
+        request.user,
+        survey_id,
+    )
+
+    copied_survey = copy_survey(
+        source_survey=source_survey,
+        owner=request.user,
+    )
+
+    messages.success(
+        request,
+        (
+            f'Создана копия формы '
+            f'«{source_survey.title}».'
+        ),
+    )
+
+    return redirect(
+        "surveys:survey_edit",
+        survey_id=copied_survey.pk,
+    )

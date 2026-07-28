@@ -30,6 +30,14 @@
     </div>
 
     <div class="d-flex flex-wrap gap-2">
+        {% if survey.status == "CLOSED" or survey.status == "ARCHIVED" %}
+            <a
+                href="{% url 'surveys:survey_protocol_edit' survey.pk %}"
+                class="btn btn-primary"
+            >
+                Сформировать протокол
+            </a>
+        {% endif %}
         <a
             href="{% url 'surveys:survey_excel_export' survey.pk %}"
             class="btn btn-success"

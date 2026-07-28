@@ -56,6 +56,24 @@
         >
             Результаты
         </a>
+
+        <form
+            method="post"
+            action="{% url 'surveys:survey_copy' survey.pk %}"
+        >
+            {% csrf_token %}
+
+            <button
+                type="submit"
+                class="btn btn-outline-primary"
+                onclick="return confirm(
+                    'Создать копию этой формы?'
+                );"
+            >
+                Копировать форму
+            </button>
+        </form>
+
         {% if survey.status == "DRAFT" %}
             <form
                 method="post"

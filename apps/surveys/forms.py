@@ -1,5 +1,5 @@
 from decimal import Decimal
-
+from .models import SurveyProtocol
 from django import forms
 
 from .models import Survey, SurveyQuestion, SurveySample
@@ -273,3 +273,161 @@ class PublicSurveyForm(forms.Form):
             )
 
         return blocks
+
+class SurveyProtocolForm(forms.ModelForm):
+    """
+    Форма реквизитов итогового протокола.
+    """
+
+    class Meta:
+        model = SurveyProtocol
+
+        fields = (
+            "document_code",
+            "protocol_number",
+            "protocol_date",
+            "responsible_employee",
+            "tasting_goal",
+            "room_conditions",
+            "product_conditions",
+            "conclusion",
+            "signer_position",
+            "signer_name",
+        )
+
+        widgets = {
+            "document_code": forms.TextInput(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": "КК-Ф-020",
+                }
+            ),
+            "protocol_number": forms.TextInput(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": "304",
+                    "autofocus": True,
+                }
+            ),
+            "protocol_date": forms.DateInput(
+                format="%Y-%m-%d",
+                attrs={
+                    "class": "form-control",
+                    "type": "date",
+                },
+            ),
+            "responsible_employee": forms.TextInput(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": "Мальцева Е.С.",
+                }
+            ),
+            "tasting_goal": forms.Textarea(
+                attrs={
+                    "class": "form-control",
+                    "rows": 3,
+                    "placeholder": (
+                        "Органолептическая оценка продукции..."
+                    ),
+                }
+            ),
+            "room_conditions": forms.Textarea(
+                attrs={
+                    "class": "form-control",
+                    "rows": 3,
+                }
+            ),
+            "product_conditions": forms.Textarea(
+                attrs={
+                    "class": "form-control",
+                    "rows": 5,
+                    "placeholder": (
+                        "Температура готовых блюд..."
+                    ),
+                }
+            ),
+            "conclusion": forms.Textarea(
+                attrs={
+                    "class": "form-control",
+                    "rows": 4,
+                    "placeholder": (
+                        "По результатам дегустации..."
+                    ),
+                }
+            ),
+            "signer_position": forms.TextInput(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": "Нач. ОРП",
+                }
+            ),
+            "signer_name": forms.TextInput(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": "Холина О.В.",
+                }
+            ),
+        }
+
+        localized_fields = ()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.fields["protocol_date"].input_formats = [
+            "%Y-%m-%d",
+            "%d.%m.%Y",
+        ]
+
+    def clean_protocol_number(self):
+        value = self.cleaned_data.get(
+            "protocol_number",
+            "",
+        ).strip()
+
+        if not value:
+            raise forms.ValidationError(
+                "Укажите номер протокола."
+            )
+
+        return value
+
+    def clean_responsible_employee(self):
+        value = self.cleaned_data.get(
+            "responsible_employee",
+            "",
+        ).strip()
+
+        if not value:
+            raise forms.ValidationError(
+                "Укажите ответственного сотрудника."
+            )
+
+        return value
+
+    def clean_tasting_goal(self):
+        value = self.cleaned_data.get(
+            "tasting_goal",
+            "",
+        ).strip()
+
+        if not value:
+            raise forms.ValidationError(
+                "Укажите цель дегустации."
+            )
+
+        return value
+
+    def clean_conclusion(self):
+        value = self.cleaned_data.get(
+            "conclusion",
+            "",
+        ).strip()
+
+        if not value:
+            raise forms.ValidationError(
+                "Укажите заключение."
+            )
+
+        return value
+

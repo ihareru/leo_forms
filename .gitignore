@@ -9,6 +9,8 @@ venv/
 
 # Environment settings
 .env
+.env.*
+!.env.example
 
 # Django
 db.sqlite3

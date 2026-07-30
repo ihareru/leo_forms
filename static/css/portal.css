@@ -19,3 +19,32 @@ body {
 .form-check-input:focus {
     box-shadow: 0 0 0 0.2rem rgb(13 110 253 / 15%);
 }
+
+.public-survey-container {
+    max-width: 820px;
+    margin-right: auto;
+    margin-left: auto;
+}
+
+.public-survey-container textarea {
+    resize: vertical;
+}
+
+.public-survey-container .form-control {
+    min-height: 46px;
+}
+
+.public-survey-container textarea.form-control {
+    min-height: 90px;
+}
+
+@media (max-width: 576px) {
+    .public-survey-container .card-body {
+        padding: 1.25rem !important;
+    }
+
+    .public-survey-container .card-header {
+        padding-right: 1.25rem;
+        padding-left: 1.25rem;
+    }
+}

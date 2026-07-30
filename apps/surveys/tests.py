@@ -1,13 +1,28 @@
+import tempfile
+from datetime import date
 from decimal import Decimal
-
+from io import BytesIO
+from docx import Document
+from django.urls import reverse
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
-from django.test import TestCase
+from django.core.files.storage import default_storage
+from django.test import TestCase, override_settings
 
-from .forms import RatingDecimalField
-from .models import Survey
-from .models import SurveyQuestion
-from .models import SurveySample
+from .forms import RatingDecimalField, PublicSurveyForm, SurveyProtocolForm
+from .models import (
+    Survey,
+    SurveyQuestion,
+    SurveySample,
+    Answer,
+    Submission,
+    GeneratedProtocol,
+    SurveyProtocol,
+)
+from .services.results import get_survey_results
+from .services.docx_protocols import build_protocol_docx, generate_and_save_protocol
+from .services.protocol_defaults import build_protocol_initial_data, get_next_protocol_number
+from .services.copying import copy_survey
 
 
 User = get_user_model()
@@ -198,3 +213,1299 @@ class RatingDecimalFieldTests(TestCase):
     def test_rejects_non_numeric_value(self):
         with self.assertRaises(ValidationError):
             self.field.clean("пять")
+
+
+class PublicSurveyFormTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="creator_public",
+            password="StrongPassword123!",
+        )
+
+        self.survey = Survey.objects.create(
+            owner=self.user,
+            title="Публичная форма",
+        )
+
+        self.sample = SurveySample.objects.create(
+            survey=self.survey,
+            name="Образец №1",
+            order=10,
+        )
+
+    def get_valid_form_data(self):
+        data = {
+            "full_name": "Иванов Иван Иванович",
+            "position": "Инженер-технолог",
+        }
+
+        for question in self.survey.questions.all():
+            field_name = (
+                PublicSurveyForm.get_answer_field_name(
+                    sample_id=self.sample.pk,
+                    question_id=question.pk,
+                )
+            )
+
+            if (
+                question.question_type
+                == SurveyQuestion.QuestionType.RATING
+            ):
+                data[field_name] = "4,5"
+            else:
+                data[field_name] = "Хороший образец"
+
+        return data
+
+    def test_public_form_accepts_comma_scores(self):
+        form = PublicSurveyForm(
+            data=self.get_valid_form_data(),
+            survey=self.survey,
+        )
+
+        self.assertTrue(
+            form.is_valid(),
+            form.errors,
+        )
+
+        rating_question = self.survey.questions.filter(
+            question_type=(
+                SurveyQuestion.QuestionType.RATING
+            ),
+        ).first()
+
+        field_name = form.get_answer_field_name(
+            sample_id=self.sample.pk,
+            question_id=rating_question.pk,
+        )
+
+        self.assertEqual(
+            form.cleaned_data[field_name],
+            Decimal("4.5"),
+        )
+
+    def test_public_form_rejects_score_above_five(self):
+        data = self.get_valid_form_data()
+
+        rating_question = self.survey.questions.filter(
+            question_type=(
+                SurveyQuestion.QuestionType.RATING
+            ),
+        ).first()
+
+        field_name = (
+            PublicSurveyForm.get_answer_field_name(
+                sample_id=self.sample.pk,
+                question_id=rating_question.pk,
+            )
+        )
+
+        data[field_name] = "5,1"
+
+        form = PublicSurveyForm(
+            data=data,
+            survey=self.survey,
+        )
+
+        self.assertFalse(form.is_valid())
+
+        self.assertIn(
+            field_name,
+            form.errors,
+        )
+
+
+class PublicSurveyViewTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="public_owner",
+            password="StrongPassword123!",
+        )
+
+        self.survey = Survey.objects.create(
+            owner=self.user,
+            title="Дегустация",
+        )
+
+        self.sample = SurveySample.objects.create(
+            survey=self.survey,
+            name="Образец №1",
+            order=10,
+        )
+
+    def get_public_url(self):
+        return reverse(
+            "public_survey",
+            args=[
+                self.survey.public_id,
+            ],
+        )
+
+    def get_valid_submission_data(self):
+        data = {
+            "full_name": "Петров Пётр Петрович",
+            "position": "Технолог",
+        }
+
+        for question in self.survey.questions.all():
+            field_name = (
+                PublicSurveyForm.get_answer_field_name(
+                    sample_id=self.sample.pk,
+                    question_id=question.pk,
+                )
+            )
+
+            if (
+                question.question_type
+                == SurveyQuestion.QuestionType.RATING
+            ):
+                data[field_name] = "3,5"
+            else:
+                data[field_name] = (
+                    "Комментарий участника"
+                )
+
+        return data
+
+    def test_draft_survey_is_not_public(self):
+        response = self.client.get(
+            self.get_public_url(),
+        )
+
+        self.assertEqual(
+            response.status_code,
+            404,
+        )
+
+    def test_published_survey_is_public(self):
+        self.survey.publish()
+
+        response = self.client.get(
+            self.get_public_url(),
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertContains(
+            response,
+            self.survey.title,
+        )
+
+        self.assertContains(
+            response,
+            self.sample.name,
+        )
+
+    def test_closed_survey_does_not_accept_answers(self):
+        self.survey.publish()
+        self.survey.close()
+
+        response = self.client.get(
+            self.get_public_url(),
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertContains(
+            response,
+            "Сбор ответов завершён",
+        )
+
+    def test_submission_is_saved(self):
+        self.survey.publish()
+
+        response = self.client.post(
+            self.get_public_url(),
+            self.get_valid_submission_data(),
+        )
+
+        self.assertEqual(
+            Submission.objects.count(),
+            1,
+        )
+
+        submission = Submission.objects.get()
+
+        self.assertEqual(
+            submission.full_name,
+            "Петров Пётр Петрович",
+        )
+
+        self.assertEqual(
+            submission.position,
+            "Технолог",
+        )
+
+        expected_answer_count = (
+            self.survey.questions.count()
+            * self.survey.samples.filter(
+                is_active=True,
+            ).count()
+        )
+
+        self.assertEqual(
+            submission.answers.count(),
+            expected_answer_count,
+        )
+
+        self.assertEqual(
+            response.status_code,
+            302,
+        )
+
+    def test_comma_score_saved_as_decimal(self):
+        self.survey.publish()
+
+        self.client.post(
+            self.get_public_url(),
+            self.get_valid_submission_data(),
+        )
+
+        answer = Answer.objects.filter(
+            question__question_type=(
+                SurveyQuestion.QuestionType.RATING
+            ),
+        ).first()
+
+        self.assertEqual(
+            answer.numeric_value,
+            Decimal("3.5"),
+        )
+
+    def test_comment_is_linked_to_participant(self):
+        self.survey.publish()
+
+        self.client.post(
+            self.get_public_url(),
+            self.get_valid_submission_data(),
+        )
+
+        comment_answer = Answer.objects.get(
+            question__question_type=(
+                SurveyQuestion.QuestionType.TEXT
+            ),
+        )
+
+        self.assertEqual(
+            comment_answer.text_value,
+            "Комментарий участника",
+        )
+
+        self.assertEqual(
+            comment_answer.submission.full_name,
+            "Петров Пётр Петрович",
+        )
+
+    def test_second_submission_blocked_in_same_session(self):
+        self.survey.publish()
+
+        data = self.get_valid_submission_data()
+
+        self.client.post(
+            self.get_public_url(),
+            data,
+        )
+
+        response = self.client.post(
+            self.get_public_url(),
+            data,
+        )
+
+        self.assertEqual(
+            Submission.objects.count(),
+            1,
+        )
+
+        self.assertContains(
+            response,
+            "Ответ уже отправлен",
+        )
+
+    def test_multiple_submissions_can_be_allowed(self):
+        self.survey.allow_multiple_submissions = True
+        self.survey.save(
+            update_fields=[
+                "allow_multiple_submissions",
+                "updated_at",
+            ]
+        )
+
+        self.survey.publish()
+
+        data = self.get_valid_submission_data()
+
+        self.client.post(
+            self.get_public_url(),
+            data,
+        )
+
+        self.client.post(
+            self.get_public_url(),
+            data,
+        )
+
+        self.assertEqual(
+            Submission.objects.count(),
+            2,
+        )
+
+    def test_inactive_sample_is_not_shown(self):
+        self.sample.is_active = False
+        self.sample.save(
+            update_fields=[
+                "is_active",
+                "updated_at",
+            ]
+        )
+
+        active_sample = SurveySample.objects.create(
+            survey=self.survey,
+            name="Активный образец",
+            order=20,
+        )
+
+        self.survey.publish()
+
+        response = self.client.get(
+            self.get_public_url(),
+        )
+
+        self.assertNotContains(
+            response,
+            self.sample.name,
+        )
+
+        self.assertContains(
+            response,
+            active_sample.name,
+        )
+
+
+class SurveyResultsTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="results_owner",
+            password="StrongPassword123!",
+        )
+
+        self.survey = Survey.objects.create(
+            owner=self.user,
+            title="Результаты дегустации",
+        )
+
+        self.sample = SurveySample.objects.create(
+            survey=self.survey,
+            name="Образец №1",
+            order=10,
+        )
+
+        self.rating_question = (
+            self.survey.questions.filter(
+                question_type=(
+                    SurveyQuestion.QuestionType.RATING
+                ),
+            )
+            .order_by(
+                "order",
+            )
+            .first()
+        )
+
+        self.comment_question = (
+            self.survey.questions.filter(
+                question_type=(
+                    SurveyQuestion.QuestionType.TEXT
+                ),
+            )
+            .first()
+        )
+
+    def create_submission(
+        self,
+        *,
+        full_name,
+        score,
+        comment="",
+        is_excluded=False,
+    ):
+        submission = Submission.objects.create(
+            survey=self.survey,
+            full_name=full_name,
+            position="Технолог",
+            is_excluded=is_excluded,
+        )
+
+        Answer.objects.create(
+            submission=submission,
+            sample=self.sample,
+            question=self.rating_question,
+            numeric_value=score,
+        )
+
+        Answer.objects.create(
+            submission=submission,
+            sample=self.sample,
+            question=self.comment_question,
+            text_value=comment,
+        )
+
+        return submission
+
+    def test_average_score_is_calculated(self):
+        self.create_submission(
+            full_name="Участник №1",
+            score=Decimal("4.0"),
+        )
+
+        self.create_submission(
+            full_name="Участник №2",
+            score=Decimal("5.0"),
+        )
+
+        results = get_survey_results(
+            self.survey,
+        )
+
+        rating_score = results["rows"][0]["scores"][0]
+
+        self.assertEqual(
+            rating_score["average"],
+            Decimal("4.5"),
+        )
+
+    def test_excluded_submission_is_not_in_average(self):
+        self.create_submission(
+            full_name="Участник №1",
+            score=Decimal("5.0"),
+        )
+
+        self.create_submission(
+            full_name="Ошибочный участник",
+            score=Decimal("1.0"),
+            is_excluded=True,
+        )
+
+        results = get_survey_results(
+            self.survey,
+        )
+
+        rating_score = results["rows"][0]["scores"][0]
+
+        self.assertEqual(
+            rating_score["average"],
+            Decimal("5.0"),
+        )
+
+        self.assertEqual(
+            results["submissions_total"],
+            2,
+        )
+
+        self.assertEqual(
+            results["submissions_included"],
+            1,
+        )
+
+        self.assertEqual(
+            results["submissions_excluded"],
+            1,
+        )
+
+    def test_comments_are_anonymous_in_results(self):
+        self.create_submission(
+            full_name="Иванов Иван Иванович",
+            score=Decimal("4.0"),
+            comment="Недостаточно выраженный вкус",
+        )
+
+        results = get_survey_results(
+            self.survey,
+        )
+
+        comments = results["rows"][0]["comments"]
+
+        self.assertEqual(
+            comments,
+            [
+                "Недостаточно выраженный вкус",
+            ],
+        )
+
+        self.assertNotIn(
+            "Иванов Иван Иванович",
+            comments,
+        )
+
+class SurveyReportViewTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="report_owner",
+            password="StrongPassword123!",
+        )
+
+        self.other_user = User.objects.create_user(
+            username="report_other",
+            password="StrongPassword123!",
+        )
+
+        self.survey = Survey.objects.create(
+            owner=self.user,
+            title="Форма для отчётов",
+        )
+
+        self.sample = SurveySample.objects.create(
+            survey=self.survey,
+            name="Образец №1",
+            order=10,
+        )
+
+    def test_owner_can_open_results(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            reverse(
+                "surveys:survey_results",
+                args=[
+                    self.survey.pk,
+                ],
+            ),
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertContains(
+            response,
+            "Результаты",
+        )
+
+    def test_other_user_cannot_open_results(self):
+        self.client.force_login(self.other_user)
+
+        response = self.client.get(
+            reverse(
+                "surveys:survey_results",
+                args=[
+                    self.survey.pk,
+                ],
+            ),
+        )
+
+        self.assertEqual(
+            response.status_code,
+            404,
+        )
+
+    def test_qr_code_is_png(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            reverse(
+                "surveys:survey_qr_code",
+                args=[
+                    self.survey.pk,
+                ],
+            ),
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertEqual(
+            response["Content-Type"],
+            "image/png",
+        )
+
+        self.assertTrue(
+            response.content.startswith(
+                b"\x89PNG",
+            )
+        )
+
+    def test_excel_export_returns_xlsx(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            reverse(
+                "surveys:survey_excel_export",
+                args=[
+                    self.survey.pk,
+                ],
+            ),
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertEqual(
+            response["Content-Type"],
+            (
+                "application/vnd.openxmlformats-officedocument."
+                "spreadsheetml.sheet"
+            ),
+        )
+
+        self.assertTrue(
+            response.content.startswith(
+                b"PK",
+            )
+        )
+
+class SubmissionManagementTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="submission_owner",
+            password="StrongPassword123!",
+        )
+
+        self.survey = Survey.objects.create(
+            owner=self.user,
+            title="Управление ответами",
+        )
+
+        self.submission = Submission.objects.create(
+            survey=self.survey,
+            full_name="Участник",
+            position="Технолог",
+        )
+
+    def test_submission_can_be_excluded(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse(
+                "surveys:submission_exclude",
+                args=[
+                    self.survey.pk,
+                    self.submission.pk,
+                ],
+            ),
+            {
+                "exclusion_reason": (
+                    "Ответ отправлен ошибочно"
+                ),
+            },
+        )
+
+        self.submission.refresh_from_db()
+
+        self.assertTrue(
+            self.submission.is_excluded,
+        )
+
+        self.assertEqual(
+            self.submission.exclusion_reason,
+            "Ответ отправлен ошибочно",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            302,
+        )
+
+    def test_submission_can_be_returned_to_results(self):
+        self.submission.is_excluded = True
+        self.submission.exclusion_reason = "Ошибка"
+        self.submission.save()
+
+        self.client.force_login(self.user)
+
+        self.client.post(
+            reverse(
+                "surveys:submission_include",
+                args=[
+                    self.survey.pk,
+                    self.submission.pk,
+                ],
+            ),
+        )
+
+        self.submission.refresh_from_db()
+
+        self.assertFalse(
+            self.submission.is_excluded,
+        )
+
+        self.assertEqual(
+            self.submission.exclusion_reason,
+            "",
+        )
+
+class SurveyProtocolTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="protocol_owner",
+            password="StrongPassword123!",
+        )
+
+        self.survey = Survey.objects.create(
+            owner=self.user,
+            title="Протокольная дегустация",
+        )
+
+        self.sample = SurveySample.objects.create(
+            survey=self.survey,
+            name="Образец №1",
+            description="Описание образца",
+            order=10,
+        )
+
+        self.submission = Submission.objects.create(
+            survey=self.survey,
+            full_name="Иванов Иван Иванович",
+            position="Инженер-технолог",
+        )
+
+        for question in self.survey.questions.all():
+            if (
+                question.question_type
+                == SurveyQuestion.QuestionType.RATING
+            ):
+                Answer.objects.create(
+                    submission=self.submission,
+                    sample=self.sample,
+                    question=question,
+                    numeric_value=Decimal("4.5"),
+                )
+            else:
+                Answer.objects.create(
+                    submission=self.submission,
+                    sample=self.sample,
+                    question=question,
+                    text_value="Хороший вкус",
+                )
+
+        self.survey.publish()
+        self.survey.close()
+
+        self.protocol = SurveyProtocol.objects.create(
+            survey=self.survey,
+            document_code="КК-Ф-020",
+            protocol_number="304",
+            protocol_date=date(2026, 5, 21),
+            responsible_employee="Мальцева Е.С.",
+            tasting_goal=(
+                "Органолептическая оценка продукции"
+            ),
+            room_conditions=(
+                "Температура воздуха +18 – +25 °С."
+            ),
+            product_conditions=(
+                "Температура продукции +55 ± 5 °С."
+            ),
+            conclusion=(
+                "Образец получил высокие оценки."
+            ),
+            signer_position="Нач. ОРП",
+            signer_name="Холина О.В.",
+        )
+
+    def test_protocol_is_complete(self):
+        self.assertTrue(
+            self.protocol.is_complete,
+        )
+
+    def test_protocol_docx_is_created(self):
+        document_data = build_protocol_docx(
+            survey=self.survey,
+            protocol=self.protocol,
+        )
+
+        self.assertTrue(
+            document_data.startswith(b"PK"),
+        )
+
+        self.assertGreater(
+            len(document_data),
+            1000,
+        )
+
+    def test_protocol_page_available_after_close(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            reverse(
+                "surveys:survey_protocol_edit",
+                args=[
+                    self.survey.pk,
+                ],
+            ),
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertContains(
+            response,
+            "Протокол дегустации",
+        )
+
+    def test_protocol_page_unavailable_for_published_survey(self):
+        self.survey.status = Survey.Status.PUBLISHED
+        self.survey.save(
+            update_fields=[
+                "status",
+                "updated_at",
+            ]
+        )
+
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            reverse(
+                "surveys:survey_protocol_edit",
+                args=[
+                    self.survey.pk,
+                ],
+            ),
+        )
+
+        self.assertRedirects(
+            response,
+            reverse(
+                "surveys:survey_results",
+                args=[
+                    self.survey.pk,
+                ],
+            ),
+        )
+
+    def test_protocol_date_is_written_to_docx(self):
+        document_data = build_protocol_docx(
+            survey=self.survey,
+            protocol=self.protocol,
+        )
+
+        document = Document(BytesIO(document_data))
+
+        document_text = "\n".join(paragraph.text for paragraph in document.paragraphs)
+
+        self.assertIn(
+            "«21» мая 2026 г.",
+            document_text,
+        )
+        
+
+class GeneratedProtocolTests(TestCase):
+    def setUp(self):
+        self.temporary_media = tempfile.TemporaryDirectory()
+
+        self.override = override_settings(
+            MEDIA_ROOT=self.temporary_media.name,
+        )
+
+        self.override.enable()
+
+        self.user = User.objects.create_user(
+            username="generated_protocol_owner",
+            password="StrongPassword123!",
+        )
+
+        self.survey = Survey.objects.create(
+            owner=self.user,
+            title="Форма для DOCX",
+        )
+
+        self.sample = SurveySample.objects.create(
+            survey=self.survey,
+            name="Образец №1",
+            order=10,
+        )
+
+        submission = Submission.objects.create(
+            survey=self.survey,
+            full_name="Петров Пётр Петрович",
+            position="Технолог",
+        )
+
+        for question in self.survey.questions.all():
+            if (
+                question.question_type
+                == SurveyQuestion.QuestionType.RATING
+            ):
+                Answer.objects.create(
+                    submission=submission,
+                    sample=self.sample,
+                    question=question,
+                    numeric_value=Decimal("5.0"),
+                )
+            else:
+                Answer.objects.create(
+                    submission=submission,
+                    sample=self.sample,
+                    question=question,
+                    text_value="Комментарий",
+                )
+
+        self.protocol = SurveyProtocol.objects.create(
+            survey=self.survey,
+            protocol_number="500",
+            protocol_date=date(2026, 7, 28),
+            responsible_employee="Сотрудник",
+            tasting_goal="Оценка продукции",
+            conclusion="Высокие оценки",
+            signer_position="Начальник",
+            signer_name="Иванов И.И.",
+        )
+
+    def tearDown(self):
+        self.override.disable()
+        self.temporary_media.cleanup()
+
+    def test_new_versions_are_created(self):
+        first = generate_and_save_protocol(
+            survey=self.survey,
+            protocol=self.protocol,
+            user=self.user,
+        )
+
+        second = generate_and_save_protocol(
+            survey=self.survey,
+            protocol=self.protocol,
+            user=self.user,
+        )
+
+        self.assertEqual(
+            first.version,
+            1,
+        )
+
+        self.assertEqual(
+            second.version,
+            2,
+        )
+
+        self.assertEqual(
+            GeneratedProtocol.objects.count(),
+            2,
+        )
+
+        self.assertTrue(
+            first.file.name.endswith(
+                ".docx"
+            )
+        )
+
+        self.assertTrue(
+            default_storage.exists(
+                first.file.name,
+            )
+        )
+
+class ProtocolDefaultsTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="protocol_defaults_owner",
+            password="StrongPassword123!",
+        )
+
+        self.previous_survey = Survey.objects.create(
+            owner=self.user,
+            title="Предыдущая форма",
+        )
+
+        self.previous_protocol = SurveyProtocol.objects.create(
+            survey=self.previous_survey,
+            document_code="КК-Ф-020",
+            protocol_number="304",
+            protocol_date=date(2026, 5, 21),
+            responsible_employee="Мальцева Е.С.",
+            tasting_goal="Органолептическая оценка",
+            room_conditions="Температура +18 – +25 °С.",
+            product_conditions="Продукт +55 ± 5 °С.",
+            conclusion="Образцы получили высокие оценки.",
+            signer_position="Нач. ОРП",
+            signer_name="Холина О.В.",
+        )
+
+        self.new_survey = Survey.objects.create(
+            owner=self.user,
+            title="Новая форма",
+        )
+
+    def test_next_protocol_number(self):
+        self.assertEqual(
+            get_next_protocol_number(),
+            "305",
+        )
+
+    def test_previous_fields_are_copied(self):
+        initial_data = build_protocol_initial_data(
+            survey=self.new_survey,
+        )
+
+        self.assertEqual(
+            initial_data["protocol_number"],
+            "305",
+        )
+
+        self.assertEqual(
+            initial_data["responsible_employee"],
+            "Мальцева Е.С.",
+        )
+
+        self.assertEqual(
+            initial_data["tasting_goal"],
+            "Органолептическая оценка",
+        )
+
+        self.assertEqual(
+            initial_data["room_conditions"],
+            "Температура +18 – +25 °С.",
+        )
+
+        self.assertEqual(
+            initial_data["product_conditions"],
+            "Продукт +55 ± 5 °С.",
+        )
+
+        self.assertEqual(
+            initial_data["conclusion"],
+            "Образцы получили высокие оценки.",
+        )
+
+        self.assertEqual(
+            initial_data["signer_position"],
+            "Нач. ОРП",
+        )
+
+        self.assertEqual(
+            initial_data["signer_name"],
+            "Холина О.В.",
+        )
+
+    def test_protocol_date_field_accepts_html_date(self):
+        form = SurveyProtocolForm(
+            data={
+                "document_code": "КК-Ф-020",
+                "protocol_number": "305",
+                "protocol_date": "2026-07-28",
+                "responsible_employee": "Сотрудник",
+                "tasting_goal": "Цель",
+                "room_conditions": "Условия",
+                "product_conditions": "Температура",
+                "conclusion": "Заключение",
+                "signer_position": "Начальник",
+                "signer_name": "Иванов И.И.",
+            }
+        )
+
+        self.assertTrue(
+            form.is_valid(),
+            form.errors,
+        )
+
+        self.assertEqual(
+            form.cleaned_data["protocol_date"],
+            date(2026, 7, 28),
+        )
+
+    def test_protocol_date_is_rendered_for_html_input(self):
+        protocol = SurveyProtocol.objects.create(
+            survey=self.new_survey,
+            protocol_number="305",
+            protocol_date=date(2026, 7, 28),
+        )
+
+        form = SurveyProtocolForm(
+            instance=protocol,
+        )
+
+        rendered_date = str(
+            form["protocol_date"]
+        )
+
+        self.assertIn(
+            'value="2026-07-28"',
+            rendered_date,
+        )
+
+
+class SurveyCopyTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="copy_owner",
+            password="StrongPassword123!",
+        )
+
+        self.source_survey = Survey.objects.create(
+            owner=self.user,
+            title="Исходная форма",
+            description="Описание исходной формы",
+            allow_multiple_submissions=True,
+        )
+
+        self.first_sample = SurveySample.objects.create(
+            survey=self.source_survey,
+            name="Образец №1",
+            description="Первый образец",
+            order=10,
+        )
+
+        self.second_sample = SurveySample.objects.create(
+            survey=self.source_survey,
+            name="Образец №2",
+            description="Второй образец",
+            order=20,
+        )
+
+    def test_survey_is_copied_as_draft(self):
+        copied_survey = copy_survey(
+            source_survey=self.source_survey,
+            owner=self.user,
+        )
+
+        self.assertEqual(
+            copied_survey.status,
+            Survey.Status.DRAFT,
+        )
+
+        self.assertEqual(
+            copied_survey.owner,
+            self.user,
+        )
+
+        self.assertEqual(
+            copied_survey.title,
+            "Копия — Исходная форма",
+        )
+
+        self.assertNotEqual(
+            copied_survey.public_id,
+            self.source_survey.public_id,
+        )
+
+        self.assertIsNone(
+            copied_survey.published_at,
+        )
+
+        self.assertIsNone(
+            copied_survey.closed_at,
+        )
+
+    def test_samples_are_copied(self):
+        copied_survey = copy_survey(
+            source_survey=self.source_survey,
+            owner=self.user,
+        )
+
+        copied_samples = list(
+            copied_survey.samples.values_list(
+                "name",
+                "description",
+                "order",
+            )
+        )
+
+        self.assertEqual(
+            copied_samples,
+            [
+                (
+                    "Образец №1",
+                    "Первый образец",
+                    10,
+                ),
+                (
+                    "Образец №2",
+                    "Второй образец",
+                    20,
+                ),
+            ],
+        )
+
+    def test_questions_are_copied_once(self):
+        source_question_count = (
+            self.source_survey.questions.count()
+        )
+
+        copied_survey = copy_survey(
+            source_survey=self.source_survey,
+            owner=self.user,
+        )
+
+        self.assertEqual(
+            copied_survey.questions.count(),
+            source_question_count,
+        )
+
+    def test_submissions_are_not_copied(self):
+        Submission.objects.create(
+            survey=self.source_survey,
+            full_name="Участник",
+            position="Технолог",
+        )
+
+        copied_survey = copy_survey(
+            source_survey=self.source_survey,
+            owner=self.user,
+        )
+
+        self.assertEqual(
+            copied_survey.submissions.count(),
+            0,
+        )
+
+    def test_protocol_is_not_copied(self):
+        SurveyProtocol.objects.create(
+            survey=self.source_survey,
+            protocol_number="304",
+            protocol_date=date(2026, 5, 21),
+        )
+
+        copied_survey = copy_survey(
+            source_survey=self.source_survey,
+            owner=self.user,
+        )
+
+        self.assertFalse(
+            SurveyProtocol.objects.filter(
+                survey=copied_survey,
+            ).exists()
+        )
+
+    def test_copy_view_creates_form(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse(
+                "surveys:survey_copy",
+                args=[
+                    self.source_survey.pk,
+                ],
+            ),
+        )
+
+        copied_survey = (
+            Survey.objects
+            .exclude(pk=self.source_survey.pk)
+            .get()
+        )
+
+        self.assertRedirects(
+            response,
+            reverse(
+                "surveys:survey_edit",
+                args=[
+                    copied_survey.pk,
+                ],
+            ),
+        )
+
+        self.assertEqual(
+            copied_survey.status,
+            Survey.Status.DRAFT,
+        )

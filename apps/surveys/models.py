@@ -1,5 +1,5 @@
 import uuid
-
+from pathlib import Path
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -164,13 +164,20 @@ class Survey(models.Model):
     def archive(self):
         """
         Переводит форму в архив.
+
+        Если форма была опубликована, дата завершения сбора
+        фиксируется автоматически.
         """
 
         self.status = self.Status.ARCHIVED
 
+        if self.closed_at is None:
+            self.closed_at = timezone.now()
+
         self.save(
             update_fields=[
                 "status",
+                "closed_at",
                 "updated_at",
             ]
         )
@@ -399,3 +406,436 @@ class SurveyQuestion(models.Model):
             self.minimum_value = None
             self.maximum_value = None
             self.decimal_places = 0
+
+
+class Submission(models.Model):
+    """
+    Заполненная участником форма.
+
+    Участник может быть неавторизованным, поэтому его ФИО
+    и должность сохраняются непосредственно в отправке.
+    """
+
+    survey = models.ForeignKey(
+        Survey,
+        verbose_name="Форма",
+        related_name="submissions",
+        on_delete=models.PROTECT,
+    )
+
+    public_id = models.UUIDField(
+        verbose_name="Идентификатор ответа",
+        default=uuid.uuid4,
+        unique=True,
+        editable=False,
+        db_index=True,
+    )
+
+    full_name = models.CharField(
+        verbose_name="ФИО",
+        max_length=255,
+    )
+
+    position = models.CharField(
+        verbose_name="Должность",
+        max_length=255,
+    )
+
+    submitted_at = models.DateTimeField(
+        verbose_name="Дата заполнения",
+        auto_now_add=True,
+        db_index=True,
+    )
+
+    is_excluded = models.BooleanField(
+        verbose_name="Исключён из расчётов",
+        default=False,
+        db_index=True,
+    )
+
+    exclusion_reason = models.CharField(
+        verbose_name="Причина исключения",
+        max_length=500,
+        blank=True,
+    )
+
+    ip_address = models.GenericIPAddressField(
+        verbose_name="IP-адрес",
+        null=True,
+        blank=True,
+    )
+
+    user_agent = models.TextField(
+        verbose_name="Браузер",
+        blank=True,
+    )
+
+    class Meta:
+        verbose_name = "Ответ участника"
+        verbose_name_plural = "Ответы участников"
+        ordering = [
+            "-submitted_at",
+        ]
+        indexes = [
+            models.Index(
+                fields=[
+                    "survey",
+                    "is_excluded",
+                ],
+                name="submission_survey_excl_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.full_name}: "
+            f"{self.survey.title} "
+            f"({self.submitted_at:%d.%m.%Y %H:%M})"
+        )
+
+
+class Answer(models.Model):
+    """
+    Отдельный ответ на вопрос по конкретному образцу.
+    """
+
+    submission = models.ForeignKey(
+        Submission,
+        verbose_name="Заполнение",
+        related_name="answers",
+        on_delete=models.CASCADE,
+    )
+
+    sample = models.ForeignKey(
+        SurveySample,
+        verbose_name="Образец",
+        related_name="answers",
+        on_delete=models.PROTECT,
+    )
+
+    question = models.ForeignKey(
+        SurveyQuestion,
+        verbose_name="Вопрос",
+        related_name="answers",
+        on_delete=models.PROTECT,
+    )
+
+    numeric_value = models.DecimalField(
+        verbose_name="Числовая оценка",
+        max_digits=3,
+        decimal_places=1,
+        null=True,
+        blank=True,
+    )
+
+    text_value = models.TextField(
+        verbose_name="Текстовый ответ",
+        blank=True,
+    )
+
+    created_at = models.DateTimeField(
+        verbose_name="Дата создания",
+        auto_now_add=True,
+    )
+
+    class Meta:
+        verbose_name = "Ответ"
+        verbose_name_plural = "Ответы"
+        ordering = [
+            "sample__order",
+            "question__order",
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "submission",
+                    "sample",
+                    "question",
+                ],
+                name="unique_answer_per_sample_question",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=[
+                    "sample",
+                    "question",
+                ],
+                name="answer_sample_question_idx",
+            ),
+        ]
+
+    def __str__(self):
+        value = (
+            self.numeric_value
+            if self.numeric_value is not None
+            else self.text_value
+        )
+
+        return (
+            f"{self.submission.full_name}: "
+            f"{self.sample.name} — "
+            f"{self.question.title}: {value}"
+        )
+
+    def clean(self):
+        super().clean()
+
+        if self.sample.survey_id != self.submission.survey_id:
+            raise ValidationError(
+                "Образец относится к другой форме."
+            )
+
+        if self.question.survey_id != self.submission.survey_id:
+            raise ValidationError(
+                "Вопрос относится к другой форме."
+            )
+
+        if (
+            self.question.question_type
+            == SurveyQuestion.QuestionType.RATING
+        ):
+            if self.numeric_value is None:
+                raise ValidationError(
+                    {
+                        "numeric_value": (
+                            "Для баллового вопроса "
+                            "необходимо указать оценку."
+                        )
+                    }
+                )
+
+            if (
+                self.question.minimum_value is not None
+                and self.numeric_value
+                < self.question.minimum_value
+            ):
+                raise ValidationError(
+                    {
+                        "numeric_value": (
+                            "Оценка меньше допустимого значения."
+                        )
+                    }
+                )
+
+            if (
+                self.question.maximum_value is not None
+                and self.numeric_value
+                > self.question.maximum_value
+            ):
+                raise ValidationError(
+                    {
+                        "numeric_value": (
+                            "Оценка больше допустимого значения."
+                        )
+                    }
+                )
+
+            self.text_value = ""
+
+        if (
+            self.question.question_type
+            == SurveyQuestion.QuestionType.TEXT
+        ):
+            self.numeric_value = None
+
+            
+def protocol_upload_to(instance, filename):
+    """
+    Путь хранения сформированного протокола.
+
+    Пример:
+    protocols/survey_15/protocol_304_v1.docx
+    """
+
+    extension = Path(filename).suffix or ".docx"
+
+    return (
+        f"protocols/survey_{instance.survey_id}/"
+        f"protocol_{instance.protocol_number}_"
+        f"v{instance.version}{extension}"
+    )
+
+
+class SurveyProtocol(models.Model):
+    """
+    Реквизиты протокола конкретной формы.
+
+    Заполняются после завершения сбора ответов.
+    """
+
+    survey = models.OneToOneField(
+        Survey,
+        verbose_name="Форма",
+        related_name="protocol",
+        on_delete=models.CASCADE,
+    )
+
+    document_code = models.CharField(
+        verbose_name="Код документа",
+        max_length=100,
+        default="КК-Ф-020",
+        blank=True,
+    )
+
+    protocol_number = models.CharField(
+        verbose_name="Номер протокола",
+        max_length=50,
+        blank=True,
+    )
+
+    protocol_date = models.DateField(
+        verbose_name="Дата протокола",
+        null=True,
+        blank=True,
+    )
+
+    responsible_employee = models.CharField(
+        verbose_name=(
+            "Сотрудник отдела разработки продуктов"
+        ),
+        max_length=255,
+        blank=True,
+    )
+
+    tasting_goal = models.TextField(
+        verbose_name="Цель дегустации",
+        blank=True,
+    )
+
+    room_conditions = models.TextField(
+        verbose_name="Условия в помещении",
+        blank=True,
+        default=(
+            "Температура воздуха в помещении: "
+            "+18 – +25 °С, относительная влажность "
+            "воздуха – менее 75%."
+        ),
+    )
+
+    product_conditions = models.TextField(
+        verbose_name="Температура и условия продуктов",
+        blank=True,
+    )
+
+    conclusion = models.TextField(
+        verbose_name="Заключение",
+        blank=True,
+    )
+
+    signer_position = models.CharField(
+        verbose_name="Должность подписанта",
+        max_length=255,
+        blank=True,
+        default="Нач. ОРП",
+    )
+
+    signer_name = models.CharField(
+        verbose_name="ФИО подписанта",
+        max_length=255,
+        blank=True,
+    )
+
+    created_at = models.DateTimeField(
+        verbose_name="Дата создания",
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        verbose_name="Дата изменения",
+        auto_now=True,
+    )
+
+    class Meta:
+        verbose_name = "Реквизиты протокола"
+        verbose_name_plural = "Реквизиты протоколов"
+
+    def __str__(self):
+        number = self.protocol_number or "без номера"
+
+        return (
+            f"Протокол {number}: "
+            f"{self.survey.title}"
+        )
+
+    @property
+    def is_complete(self) -> bool:
+        """
+        Проверка обязательных данных перед формированием DOCX.
+        """
+
+        return all(
+            [
+                self.protocol_number,
+                self.protocol_date,
+                self.responsible_employee,
+                self.tasting_goal,
+                self.conclusion,
+                self.signer_position,
+                self.signer_name,
+            ]
+        )
+
+
+class GeneratedProtocol(models.Model):
+    """
+    Сформированная версия протокола DOCX.
+
+    Каждое повторное формирование создаёт новую версию.
+    """
+
+    survey = models.ForeignKey(
+        Survey,
+        verbose_name="Форма",
+        related_name="generated_protocols",
+        on_delete=models.CASCADE,
+    )
+
+    protocol_number = models.CharField(
+        verbose_name="Номер протокола",
+        max_length=50,
+    )
+
+    version = models.PositiveIntegerField(
+        verbose_name="Версия",
+    )
+
+    file = models.FileField(
+        verbose_name="Файл DOCX",
+        upload_to=protocol_upload_to,
+    )
+
+    generated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        verbose_name="Сформировал",
+        related_name="generated_protocols",
+        on_delete=models.PROTECT,
+    )
+
+    generated_at = models.DateTimeField(
+        verbose_name="Дата формирования",
+        auto_now_add=True,
+    )
+
+    class Meta:
+        verbose_name = "Сформированный протокол"
+        verbose_name_plural = "Сформированные протоколы"
+        ordering = [
+            "-version",
+            "-generated_at",
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "survey",
+                    "version",
+                ],
+                name="unique_protocol_version_per_survey",
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"Протокол №{self.protocol_number}, "
+            f"версия {self.version}"
+        )

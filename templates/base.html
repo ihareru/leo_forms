@@ -38,6 +38,17 @@
             </a>
 
             {% if request.user.is_authenticated %}
+                <div class="navbar-nav me-auto ms-lg-4">
+                    <a
+                        class="nav-link"
+                        href="{% url 'surveys:survey_list' %}"
+                    >
+                        Формы
+                    </a>
+                </div>
+            {% endif %}
+
+            {% if request.user.is_authenticated %}
                 <div class="d-flex align-items-center gap-3">
                     <span>
                         {{ request.user.get_full_name }}

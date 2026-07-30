@@ -1,0 +1,398 @@
+{% extends "base.html" %}
+
+{% block title %}
+    {{ survey.title }} — Леовит формы
+{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <a
+        href="{% url 'surveys:survey_list' %}"
+        class="text-decoration-none"
+    >
+        ← Вернуться к формам
+    </a>
+</div>
+
+<div
+    class="d-flex flex-column flex-lg-row
+           justify-content-between align-items-lg-start
+           gap-3 mb-4"
+>
+    <div>
+        <h1 class="h2 mb-2">
+            {{ survey.title }}
+        </h1>
+
+        <div class="d-flex flex-wrap gap-2">
+            {% if survey.status == "DRAFT" %}
+                <span class="badge text-bg-secondary">
+                    Черновик
+                </span>
+            {% elif survey.status == "PUBLISHED" %}
+                <span class="badge text-bg-success">
+                    Опубликована
+                </span>
+            {% elif survey.status == "CLOSED" %}
+                <span class="badge text-bg-warning">
+                    Сбор ответов закрыт
+                </span>
+            {% elif survey.status == "ARCHIVED" %}
+                <span class="badge text-bg-dark">
+                    Архивная
+                </span>
+            {% endif %}
+
+            <span class="badge text-bg-light">
+                Создатель: {{ survey.owner.get_full_name }}
+            </span>
+        </div>
+    </div>
+
+    <div class="d-flex flex-wrap gap-2">
+        <a
+            href="{% url 'surveys:survey_results' survey.pk %}"
+            class="btn btn-primary"
+        >
+            Результаты
+        </a>
+
+        <form
+            method="post"
+            action="{% url 'surveys:survey_copy' survey.pk %}"
+        >
+            {% csrf_token %}
+
+            <button
+                type="submit"
+                class="btn btn-outline-primary"
+                onclick="return confirm(
+                    'Создать копию этой формы?'
+                );"
+            >
+                Копировать форму
+            </button>
+        </form>
+
+        {% if survey.status == "DRAFT" %}
+            <form
+                method="post"
+                action="{% url 'surveys:survey_publish' survey.pk %}"
+            >
+                {% csrf_token %}
+
+                <button
+                    type="submit"
+                    class="btn btn-success"
+                >
+                    Опубликовать
+                </button>
+            </form>
+        {% elif survey.status == "PUBLISHED" %}
+            <form
+                method="post"
+                action="{% url 'surveys:survey_close' survey.pk %}"
+            >
+                {% csrf_token %}
+
+                <button
+                    type="submit"
+                    class="btn btn-warning"
+                >
+                    Закрыть сбор ответов
+                </button>
+            </form>
+        {% endif %}
+
+        {% if survey.status != "ARCHIVED" %}
+            <form
+                method="post"
+                action="{% url 'surveys:survey_archive' survey.pk %}"
+                onsubmit="return confirm(
+                    'Переместить форму в архив?'
+                );"
+            >
+                {% csrf_token %}
+
+                <button
+                    type="submit"
+                    class="btn btn-outline-secondary"
+                >
+                    В архив
+                </button>
+            </form>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-12 col-xl-7">
+        <div class="card shadow-sm mb-4">
+            <div class="card-body p-4">
+                <h2 class="h4 mb-4">
+                    Основная информация
+                </h2>
+
+                <form method="post">
+                    {% csrf_token %}
+
+                    {% if form.non_field_errors %}
+                        <div class="alert alert-danger">
+                            {{ form.non_field_errors }}
+                        </div>
+                    {% endif %}
+
+                    <div class="mb-3">
+                        <label
+                            for="{{ form.title.id_for_label }}"
+                            class="form-label"
+                        >
+                            {{ form.title.label }}
+                        </label>
+
+                        {{ form.title }}
+
+                        {% for error in form.title.errors %}
+                            <div class="text-danger small mt-1">
+                                {{ error }}
+                            </div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="mb-3">
+                        <label
+                            for="{{ form.description.id_for_label }}"
+                            class="form-label"
+                        >
+                            {{ form.description.label }}
+                        </label>
+
+                        {{ form.description }}
+
+                        {% for error in form.description.errors %}
+                            <div class="text-danger small mt-1">
+                                {{ error }}
+                            </div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="form-check mb-4">
+                        {{ form.allow_multiple_submissions }}
+
+                        <label
+                            for="{{ form.allow_multiple_submissions.id_for_label }}"
+                            class="form-check-label"
+                        >
+                            Разрешать повторное заполнение
+                        </label>
+                    </div>
+
+                    <button
+                        type="submit"
+                        class="btn btn-primary"
+                    >
+                        Сохранить изменения
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card shadow-sm">
+            <div
+                class="card-header bg-white
+                       d-flex justify-content-between
+                       align-items-center py-3"
+            >
+                <h2 class="h4 mb-0">
+                    Образцы
+                </h2>
+
+                <a
+                    href="{% url 'surveys:sample_create' survey.pk %}"
+                    class="btn btn-primary btn-sm"
+                >
+                    Добавить образец
+                </a>
+            </div>
+
+            <div class="card-body">
+                {% if samples %}
+                    <div class="vstack gap-3">
+                        {% for sample in samples %}
+                            <div class="border rounded p-3">
+                                <div
+                                    class="d-flex flex-column flex-md-row
+                                           justify-content-between gap-3"
+                                >
+                                    <div>
+                                        <div class="d-flex gap-2 align-items-center">
+                                            <h3 class="h5 mb-0">
+                                                {{ sample.name }}
+                                            </h3>
+
+                                            {% if not sample.is_active %}
+                                                <span class="badge text-bg-secondary">
+                                                    Скрыт
+                                                </span>
+                                            {% endif %}
+                                        </div>
+
+                                        {% if sample.description %}
+                                            <p class="text-secondary mt-2 mb-0">
+                                                {{ sample.description|linebreaksbr }}
+                                            </p>
+                                        {% endif %}
+                                    </div>
+
+                                    <div class="d-flex flex-wrap gap-2">
+                                        <form
+                                            method="post"
+                                            action="{% url 'surveys:sample_move_up' survey.pk sample.pk %}"
+                                        >
+                                            {% csrf_token %}
+
+                                            <button
+                                                type="submit"
+                                                class="btn btn-sm btn-outline-secondary"
+                                                title="Переместить вверх"
+                                            >
+                                                ↑
+                                            </button>
+                                        </form>
+
+                                        <form
+                                            method="post"
+                                            action="{% url 'surveys:sample_move_down' survey.pk sample.pk %}"
+                                        >
+                                            {% csrf_token %}
+
+                                            <button
+                                                type="submit"
+                                                class="btn btn-sm btn-outline-secondary"
+                                                title="Переместить вниз"
+                                            >
+                                                ↓
+                                            </button>
+                                        </form>
+
+                                        <a
+                                            href="{% url 'surveys:sample_edit' survey.pk sample.pk %}"
+                                            class="btn btn-sm btn-outline-primary"
+                                        >
+                                            Изменить
+                                        </a>
+
+                                        <a
+                                            href="{% url 'surveys:sample_delete' survey.pk sample.pk %}"
+                                            class="btn btn-sm btn-outline-danger"
+                                        >
+                                            Удалить
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-center py-4">
+                        <p class="text-secondary">
+                            В форме пока нет образцов.
+                        </p>
+
+                        <a
+                            href="{% url 'surveys:sample_create' survey.pk %}"
+                            class="btn btn-primary"
+                        >
+                            Добавить первый образец
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-xl-5">
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <h2 class="h4">
+                    Вопросы
+                </h2>
+
+                <p class="text-secondary">
+                    Эти вопросы будут показаны для каждого образца.
+                </p>
+
+                <ol class="mb-0">
+                    {% for question in questions %}
+                        <li class="mb-2">
+                            {{ question.title }}
+
+                            {% if not question.is_required %}
+                                <span class="text-secondary">
+                                    — необязательный
+                                </span>
+                            {% endif %}
+                        </li>
+                    {% endfor %}
+                </ol>
+            </div>
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h2 class="h4">
+                    Публичная ссылка
+                </h2>
+
+                {% if survey.status == "DRAFT" %}
+                    <p class="text-secondary mb-0">
+                        Публичная ссылка станет доступна после
+                        публикации формы.
+                    </p>
+                {% else %}
+                    <p class="text-secondary">
+                        Ссылка для участников:
+                    </p>
+
+                    <div class="bg-light rounded p-3 text-break">
+                        <a
+                            href="{% url 'public_survey' survey.public_id %}"
+                            target="_blank"
+                            rel="noopener"
+                        >
+                            {{ request.scheme }}://{{ request.get_host }}{% url 'public_survey' survey.public_id %}
+                        </a>
+                    </div>
+
+                    <div class="d-flex flex-wrap gap-2 mt-3">
+                        <a
+                            href="{% url 'public_survey' survey.public_id %}"
+                            target="_blank"
+                            rel="noopener"
+                            class="btn btn-outline-primary"
+                        >
+                            Открыть форму
+                        </a>
+
+                        <a
+                            href="{% url 'surveys:survey_qr_print' survey.pk %}"
+                            target="_blank"
+                            rel="noopener"
+                            class="btn btn-outline-secondary"
+                        >
+                            QR-код и печать
+                        </a>
+
+                        <a
+                            href="{% url 'surveys:survey_qr_code_download' survey.pk %}"
+                            class="btn btn-outline-secondary"
+                        >
+                            Скачать QR
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

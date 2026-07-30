@@ -1,8 +1,13 @@
 from django.contrib import admin
-
-from .models import Survey
-from .models import SurveyQuestion
-from .models import SurveySample
+from .models import (
+    Answer,
+    Submission,
+    Survey,
+    SurveyQuestion,
+    SurveySample,
+    GeneratedProtocol,
+    SurveyProtocol,
+)
 
 
 class SurveySampleInline(admin.TabularInline):
@@ -204,4 +209,169 @@ class SurveyQuestionAdmin(admin.ModelAdmin):
         "survey",
         "order",
         "id",
+    )
+
+class AnswerInline(admin.TabularInline):
+    model = Answer
+    extra = 0
+    can_delete = False
+
+    fields = (
+        "sample",
+        "question",
+        "numeric_value",
+        "text_value",
+    )
+
+    readonly_fields = fields
+
+    ordering = (
+        "sample__order",
+        "question__order",
+    )
+
+
+@admin.register(Submission)
+class SubmissionAdmin(admin.ModelAdmin):
+    list_display = (
+        "full_name",
+        "position",
+        "survey",
+        "submitted_at",
+        "is_excluded",
+    )
+
+    list_filter = (
+        "survey",
+        "is_excluded",
+        "submitted_at",
+    )
+
+    search_fields = (
+        "full_name",
+        "position",
+        "survey__title",
+    )
+
+    readonly_fields = (
+        "public_id",
+        "survey",
+        "full_name",
+        "position",
+        "submitted_at",
+        "ip_address",
+        "user_agent",
+    )
+
+    ordering = (
+        "-submitted_at",
+    )
+
+    inlines = (
+        AnswerInline,
+    )
+
+
+@admin.register(Answer)
+class AnswerAdmin(admin.ModelAdmin):
+    list_display = (
+        "submission",
+        "sample",
+        "question",
+        "numeric_value",
+        "short_text_value",
+    )
+
+    list_filter = (
+        "question",
+        "sample__survey",
+    )
+
+    search_fields = (
+        "submission__full_name",
+        "sample__name",
+        "question__title",
+        "text_value",
+    )
+
+    readonly_fields = (
+        "submission",
+        "sample",
+        "question",
+        "numeric_value",
+        "text_value",
+        "created_at",
+    )
+
+    @admin.display(
+        description="Текстовый ответ",
+    )
+    def short_text_value(self, obj):
+        if not obj.text_value:
+            return "—"
+
+        if len(obj.text_value) <= 80:
+            return obj.text_value
+
+        return f"{obj.text_value[:80]}…"
+
+@admin.register(SurveyProtocol)
+class SurveyProtocolAdmin(admin.ModelAdmin):
+    list_display = (
+        "protocol_number",
+        "survey",
+        "protocol_date",
+        "responsible_employee",
+        "updated_at",
+    )
+
+    search_fields = (
+        "protocol_number",
+        "survey__title",
+        "responsible_employee",
+        "signer_name",
+    )
+
+    list_filter = (
+        "protocol_date",
+        "updated_at",
+    )
+
+    autocomplete_fields = (
+        "survey",
+    )
+
+
+@admin.register(GeneratedProtocol)
+class GeneratedProtocolAdmin(admin.ModelAdmin):
+    list_display = (
+        "survey",
+        "protocol_number",
+        "version",
+        "generated_by",
+        "generated_at",
+    )
+
+    search_fields = (
+        "survey__title",
+        "protocol_number",
+        "generated_by__username",
+        "generated_by__last_name",
+    )
+
+    list_filter = (
+        "generated_at",
+    )
+
+    readonly_fields = (
+        "survey",
+        "protocol_number",
+        "version",
+        "file",
+        "generated_by",
+        "generated_at",
+    )
+
+    ordering = (
+        "-generated_at",
     )

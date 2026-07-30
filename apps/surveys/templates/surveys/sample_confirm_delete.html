@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}
+    Удаление образца — Леовит формы
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-lg-6">
+        <div class="card shadow-sm">
+            <div class="card-body p-4">
+                <h1 class="h3 text-danger">
+                    Удаление образца
+                </h1>
+
+                <p>
+                    Вы действительно хотите удалить образец
+                    <strong>{{ sample.name }}</strong>?
+                </p>
+
+                <p class="text-secondary">
+                    На текущем этапе удаление будет необратимым.
+                </p>
+
+                <form method="post">
+                    {% csrf_token %}
+
+                    <div class="d-flex gap-2">
+                        <button
+                            type="submit"
+                            class="btn btn-danger"
+                        >
+                            Удалить
+                        </button>
+
+                        <a
+                            href="{% url 'surveys:survey_edit' survey.pk %}"
+                            class="btn btn-outline-secondary"
+                        >
+                            Отмена
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

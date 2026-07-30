@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}
+    Сбор ответов завершён
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-md-8 col-lg-6">
+        <div class="card shadow-sm">
+            <div class="card-body p-5 text-center">
+                <h1 class="h2">
+                    Сбор ответов завершён
+                </h1>
+
+                <p class="text-secondary mb-0">
+                    Форма «{{ survey.title }}» больше
+                    не принимает ответы.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

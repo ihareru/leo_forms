@@ -1098,7 +1098,7 @@ class SurveyProtocolTests(TestCase):
             "«21» мая 2026 г.",
             document_text,
         )
-        
+
 
 class GeneratedProtocolTests(TestCase):
     def setUp(self):
@@ -1508,4 +1508,250 @@ class SurveyCopyTests(TestCase):
         self.assertEqual(
             copied_survey.status,
             Survey.Status.DRAFT,
+        )
+
+
+class SurveySectionListTests(TestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(
+            username="section_owner",
+            password="StrongPassword123!",
+        )
+
+        self.other_user = User.objects.create_user(
+            username="section_other",
+            password="StrongPassword123!",
+        )
+
+        self.owner_survey = Survey.objects.create(
+            owner=self.owner,
+            title="Форма владельца",
+        )
+
+        self.other_survey = Survey.objects.create(
+            owner=self.other_user,
+            title="Чужая форма",
+        )
+
+        Submission.objects.create(
+            survey=self.owner_survey,
+            full_name="Участник владельца",
+            position="Технолог",
+        )
+
+        Submission.objects.create(
+            survey=self.other_survey,
+            full_name="Чужой участник",
+            position="Технолог",
+        )
+
+    def test_results_list_requires_login(self):
+        response = self.client.get(
+            reverse(
+                "surveys:results_list",
+            )
+        )
+
+        self.assertEqual(
+            response.status_code,
+            302,
+        )
+
+    def test_results_list_contains_own_survey(self):
+        self.client.force_login(
+            self.owner,
+        )
+
+        response = self.client.get(
+            reverse(
+                "surveys:results_list",
+            )
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertContains(
+            response,
+            "Форма владельца",
+        )
+
+    def test_results_list_hides_other_user_survey(self):
+        self.client.force_login(
+            self.owner,
+        )
+
+        response = self.client.get(
+            reverse(
+                "surveys:results_list",
+            )
+        )
+
+        self.assertNotContains(
+            response,
+            "Чужая форма",
+        )
+
+    def test_results_list_hides_surveys_without_answers(self):
+        empty_survey = Survey.objects.create(
+            owner=self.owner,
+            title="Форма без ответов",
+        )
+
+        self.client.force_login(
+            self.owner,
+        )
+
+        response = self.client.get(
+            reverse(
+                "surveys:results_list",
+            )
+        )
+
+        self.assertNotContains(
+            response,
+            empty_survey.title,
+        )
+
+    def test_protocol_list_requires_login(self):
+        response = self.client.get(
+            reverse(
+                "surveys:protocol_list",
+            )
+        )
+
+        self.assertEqual(
+            response.status_code,
+            302,
+        )
+
+    def test_protocol_list_contains_closed_own_survey(self):
+        self.owner_survey.status = Survey.Status.CLOSED
+        self.owner_survey.save(
+            update_fields=[
+                "status",
+                "updated_at",
+            ]
+        )
+
+        self.client.force_login(
+            self.owner,
+        )
+
+        response = self.client.get(
+            reverse(
+                "surveys:protocol_list",
+            )
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertContains(
+            response,
+            "Форма владельца",
+        )
+
+    def test_protocol_list_hides_published_survey(self):
+        self.owner_survey.status = Survey.Status.PUBLISHED
+        self.owner_survey.save(
+            update_fields=[
+                "status",
+                "updated_at",
+            ]
+        )
+
+        self.client.force_login(
+            self.owner,
+        )
+
+        response = self.client.get(
+            reverse(
+                "surveys:protocol_list",
+            )
+        )
+
+        self.assertNotContains(
+            response,
+            "Форма владельца",
+        )
+
+    def test_protocol_list_hides_other_user_survey(self):
+        self.owner_survey.status = Survey.Status.CLOSED
+        self.owner_survey.save(
+            update_fields=[
+                "status",
+                "updated_at",
+            ]
+        )
+
+        self.other_survey.status = Survey.Status.CLOSED
+        self.other_survey.save(
+            update_fields=[
+                "status",
+                "updated_at",
+            ]
+        )
+
+        self.client.force_login(
+            self.owner,
+        )
+
+        response = self.client.get(
+            reverse(
+                "surveys:protocol_list",
+            )
+        )
+
+        self.assertContains(
+            response,
+            "Форма владельца",
+        )
+
+        self.assertNotContains(
+            response,
+            "Чужая форма",
+        )
+
+    def test_protocol_list_shows_protocol_details(self):
+        self.owner_survey.status = Survey.Status.CLOSED
+        self.owner_survey.save(
+            update_fields=[
+                "status",
+                "updated_at",
+            ]
+        )
+
+        SurveyProtocol.objects.create(
+            survey=self.owner_survey,
+            protocol_number="501",
+            protocol_date=date(
+                2026,
+                7,
+                30,
+            ),
+        )
+
+        self.client.force_login(
+            self.owner,
+        )
+
+        response = self.client.get(
+            reverse(
+                "surveys:protocol_list",
+            )
+        )
+
+        self.assertContains(
+            response,
+            "№ 501",
+        )
+
+        self.assertContains(
+            response,
+            "30.07.2026",
         )

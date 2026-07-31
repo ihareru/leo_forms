@@ -2,7 +2,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError, ObjectDoesNotExist
 from django.db import transaction
-from django.db.models import Count, Max
+from django.db.models import Count, F, Max, Prefetch, Q
 from django.db.models.deletion import ProtectedError
 from django.shortcuts import redirect, render, get_object_or_404
 from django.views.decorators.http import require_POST
@@ -51,6 +51,156 @@ def survey_list(request):
     return render(
         request,
         "surveys/survey_list.html",
+        context,
+    )
+
+
+@login_required
+def results_list(request):
+    """
+    Общий список результатов доступных пользователю форм.
+
+    Администратор видит все формы.
+    Обычный пользователь видит только собственные формы.
+    """
+
+    surveys = (
+        get_surveys_available_to_user(request.user)
+        .annotate(
+            submissions_total=Count(
+                "submissions",
+                distinct=True,
+            ),
+            included_submissions_total=Count(
+                "submissions",
+                filter=Q(
+                    submissions__is_excluded=False,
+                ),
+                distinct=True,
+            ),
+        )
+        .annotate(
+            excluded_submissions_total=(
+                F("submissions_total")
+                - F("included_submissions_total")
+            ),
+        )
+        .filter(
+            submissions_total__gt=0,
+        )
+        .order_by(
+            "-updated_at",
+            "-id",
+        )
+    )
+
+    context = {
+        "surveys": surveys,
+    }
+
+    return render(
+        request,
+        "surveys/results_list.html",
+        context,
+    )
+
+
+@login_required
+def protocol_list(request):
+    """
+    Общий список протоколов доступных пользователю форм.
+
+    В список включаются закрытые и архивные формы,
+    для которых разрешено оформление протокола.
+    """
+
+    generated_protocol_queryset = (
+        GeneratedProtocol.objects
+        .select_related(
+            "generated_by",
+        )
+        .order_by(
+            "-version",
+            "-generated_at",
+        )
+    )
+
+    surveys = (
+        get_surveys_available_to_user(request.user)
+        .filter(
+            status__in=[
+                Survey.Status.CLOSED,
+                Survey.Status.ARCHIVED,
+            ],
+        )
+        .select_related(
+            "protocol",
+        )
+        .prefetch_related(
+            Prefetch(
+                "generated_protocols",
+                queryset=generated_protocol_queryset,
+                to_attr="loaded_generated_protocols",
+            ),
+        )
+        .annotate(
+            submissions_total=Count(
+                "submissions",
+                distinct=True,
+            ),
+            included_submissions_total=Count(
+                "submissions",
+                filter=Q(
+                    submissions__is_excluded=False,
+                ),
+                distinct=True,
+            ),
+        )
+        .order_by(
+            "-closed_at",
+            "-updated_at",
+            "-id",
+        )
+    )
+
+    survey_rows = []
+
+    for survey in surveys:
+        generated_protocols = (
+            survey.loaded_generated_protocols
+        )
+
+        latest_generated_protocol = (
+            generated_protocols[0]
+            if generated_protocols
+            else None
+        )
+
+        try:
+            protocol = survey.protocol
+        except SurveyProtocol.DoesNotExist:
+            protocol = None
+
+        survey_rows.append(
+            {
+                "survey": survey,
+                "protocol": protocol,
+                "latest_generated_protocol": (
+                    latest_generated_protocol
+                ),
+                "generated_protocols_total": len(
+                    generated_protocols
+                ),
+            }
+        )
+
+    context = {
+        "survey_rows": survey_rows,
+    }
+
+    return render(
+        request,
+        "surveys/protocol_list.html",
         context,
     )
 

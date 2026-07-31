@@ -26,6 +26,16 @@ urlpatterns = [
         name="survey_list",
     ),
     path(
+        "results/",
+        views.results_list,
+        name="results_list",
+    ),
+    path(
+        "protocols/",
+        views.protocol_list,
+        name="protocol_list",
+    ),
+    path(
         "create/",
         views.survey_create,
         name="survey_create",

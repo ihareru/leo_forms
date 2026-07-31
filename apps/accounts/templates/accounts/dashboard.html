@@ -49,13 +49,12 @@
                     Просмотр ответов и средних оценок.
                 </p>
 
-                <button
-                    type="button"
+                <a
+                    href="{% url 'surveys:results_list' %}"
                     class="btn btn-outline-primary"
-                    disabled
                 >
                     Смотреть результаты
-                </button>
+                </a>
             </div>
         </div>
     </div>
@@ -71,13 +70,12 @@
                     Формирование DOCX после окончания опроса.
                 </p>
 
-                <button
-                    type="button"
+                <a
+                    href="{% url 'surveys:protocol_list' %}"
                     class="btn btn-outline-primary"
-                    disabled
                 >
                     Открыть протоколы
-                </button>
+                </a>
             </div>
         </div>
     </div>

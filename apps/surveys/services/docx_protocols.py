@@ -188,11 +188,10 @@ def build_protocol_docx(
 
     if protocol.document_code:
         paragraph = document.add_paragraph()
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         paragraph.paragraph_format.space_after = Pt(2)
 
-        run = paragraph.add_run(
-            protocol.document_code
-        )
+        run = paragraph.add_run(protocol.document_code)
 
         run.bold = True
         run.font.name = "Arial"

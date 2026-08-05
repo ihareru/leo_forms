@@ -239,14 +239,18 @@ def build_protocol_docx(
     )
 
     if protocol.room_conditions:
-        paragraph = document.add_paragraph(
-            protocol.room_conditions
+        paragraph = add_text_paragraph(
+            document,
+            "Условия в помещении: ",
+            protocol.room_conditions,
         )
         paragraph.paragraph_format.space_after = Pt(2)
 
     if protocol.product_conditions:
-        paragraph = document.add_paragraph(
-            protocol.product_conditions
+        paragraph = add_text_paragraph(
+            document,
+            "Температура и условия продуктов: ",
+            protocol.product_conditions,
         )
         paragraph.paragraph_format.space_after = Pt(4)
 

@@ -314,6 +314,106 @@ class PublicSurveyFormTests(TestCase):
             form.errors,
         )
 
+    def get_comment_question(self):
+        return self.survey.questions.get(
+            question_type=(SurveyQuestion.QuestionType.TEXT),
+        )
+
+    def set_all_rating_values(
+        self,
+        data,
+        value,
+    ):
+        for question in self.survey.questions.filter(
+            question_type=(SurveyQuestion.QuestionType.RATING),
+        ):
+            field_name = PublicSurveyForm.get_answer_field_name(
+                sample_id=self.sample.pk,
+                question_id=question.pk,
+            )
+
+            data[field_name] = value
+
+    def test_comment_required_when_score_below_five(self):
+        data = self.get_valid_form_data()
+
+        comment_question = self.get_comment_question()
+
+        comment_field_name = PublicSurveyForm.get_answer_field_name(
+            sample_id=self.sample.pk,
+            question_id=comment_question.pk,
+        )
+
+        data[comment_field_name] = ""
+
+        form = PublicSurveyForm(
+            data=data,
+            survey=self.survey,
+        )
+
+        self.assertFalse(
+            form.is_valid(),
+        )
+
+        self.assertIn(
+            comment_field_name,
+            form.errors,
+        )
+
+        self.assertIn(
+            "При оценке ниже 5,0 необходимо указать комментарий.",
+            form.errors[comment_field_name],
+        )
+
+    def test_comment_not_required_when_all_scores_are_five(self):
+        data = self.get_valid_form_data()
+
+        self.set_all_rating_values(
+            data,
+            "5,0",
+        )
+
+        comment_question = self.get_comment_question()
+
+        comment_field_name = PublicSurveyForm.get_answer_field_name(
+            sample_id=self.sample.pk,
+            question_id=comment_question.pk,
+        )
+
+        data[comment_field_name] = ""
+
+        form = PublicSurveyForm(
+            data=data,
+            survey=self.survey,
+        )
+
+        self.assertTrue(
+            form.is_valid(),
+            form.errors,
+        )
+
+    def test_comment_accepts_score_below_five_when_filled(self):
+        data = self.get_valid_form_data()
+
+        comment_question = self.get_comment_question()
+
+        comment_field_name = PublicSurveyForm.get_answer_field_name(
+            sample_id=self.sample.pk,
+            question_id=comment_question.pk,
+        )
+
+        data[comment_field_name] = "Недостаточно выраженный вкус."
+
+        form = PublicSurveyForm(
+            data=data,
+            survey=self.survey,
+        )
+
+        self.assertTrue(
+            form.is_valid(),
+            form.errors,
+        )
+
 
 class PublicSurveyViewTests(TestCase):
     def setUp(self):
@@ -1096,6 +1196,36 @@ class SurveyProtocolTests(TestCase):
 
         self.assertIn(
             "«21» мая 2026 г.",
+            document_text,
+        )
+
+    def test_protocol_contains_conditions_section_titles(self):
+        document_data = build_protocol_docx(
+            survey=self.survey,
+            protocol=self.protocol,
+        )
+
+        document = Document(BytesIO(document_data))
+
+        document_text = "\n".join(paragraph.text for paragraph in document.paragraphs)
+
+        self.assertIn(
+            "Условия в помещении:",
+            document_text,
+        )
+
+        self.assertIn(
+            "Температура и условия продуктов:",
+            document_text,
+        )
+
+        self.assertIn(
+            self.protocol.room_conditions,
+            document_text,
+        )
+
+        self.assertIn(
+            self.protocol.product_conditions,
             document_text,
         )
 

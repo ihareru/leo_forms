@@ -37,7 +37,10 @@ class RatingDecimalField(forms.DecimalField):
                 attrs={
                     "class": "form-control",
                     "inputmode": "decimal",
-                    "placeholder": "Например: 4,5",
+                    "placeholder": (
+                        "Например: 4,9. Оценка производится "
+                        "по балльной шкале с разницей в 0,1 балла."
+                    ),
                     "autocomplete": "off",
                 }
             ),
@@ -220,13 +223,14 @@ class PublicSurveyForm(forms.Form):
                 else:
                     self.fields[field_name] = forms.CharField(
                         label=question.title,
-                        required=question.is_required,
+                        required=False,
                         widget=forms.Textarea(
                             attrs={
                                 "class": "form-control",
                                 "rows": 3,
                                 "placeholder": (
-                                    "Комментарий необязателен"
+                                    "При оценке ниже 5,0 "
+                                    "комментарий обязателен"
                                 ),
                             }
                         ),
@@ -241,6 +245,63 @@ class PublicSurveyForm(forms.Form):
             f"sample_{sample_id}_"
             f"question_{question_id}"
         )
+
+    def clean(self):
+        """
+        Требует комментарий по образцу, если хотя бы одна
+        балловая оценка этого образца ниже 5,0.
+        """
+
+        cleaned_data = super().clean()
+
+        rating_questions = [
+            question
+            for question in self.questions
+            if (question.question_type == SurveyQuestion.QuestionType.RATING)
+        ]
+
+        text_questions = [
+            question
+            for question in self.questions
+            if (question.question_type == SurveyQuestion.QuestionType.TEXT)
+        ]
+
+        for sample in self.samples:
+            has_score_below_five = False
+
+            for question in rating_questions:
+                field_name = self.get_answer_field_name(
+                    sample_id=sample.pk,
+                    question_id=question.pk,
+                )
+
+                value = cleaned_data.get(field_name)
+
+                if value is not None and value < Decimal("5.0"):
+                    has_score_below_five = True
+                    break
+
+            if not has_score_below_five:
+                continue
+
+            for question in text_questions:
+                field_name = self.get_answer_field_name(
+                    sample_id=sample.pk,
+                    question_id=question.pk,
+                )
+
+                comment = cleaned_data.get(
+                    field_name,
+                    "",
+                )
+
+                if not comment or not comment.strip():
+                    self.add_error(
+                        field_name,
+                        ("При оценке ниже 5,0 необходимо указать комментарий."),
+                    )
+
+        return cleaned_data
 
     def get_sample_blocks(self):
         """

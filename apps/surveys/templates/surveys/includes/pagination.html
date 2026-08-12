@@ -1,0 +1,123 @@
+{% if page_obj.has_other_pages %}
+    <nav
+        class="mt-4"
+        aria-label="Навигация по страницам"
+    >
+        <ul class="pagination justify-content-center mb-0">
+
+            <li
+                class="page-item
+                {% if not page_obj.has_previous %}disabled{% endif %}"
+            >
+                {% if page_obj.has_previous %}
+                    <a
+                        class="page-link"
+                        href="?page=1"
+                        aria-label="Первая страница"
+                    >
+                        «
+                    </a>
+                {% else %}
+                    <span
+                        class="page-link"
+                        aria-hidden="true"
+                    >
+                        «
+                    </span>
+                {% endif %}
+            </li>
+
+            <li
+                class="page-item
+                {% if not page_obj.has_previous %}disabled{% endif %}"
+            >
+                {% if page_obj.has_previous %}
+                    <a
+                        class="page-link"
+                        href="?page={{ page_obj.previous_page_number }}"
+                    >
+                        Назад
+                    </a>
+                {% else %}
+                    <span class="page-link">
+                        Назад
+                    </span>
+                {% endif %}
+            </li>
+
+            {% for page_number in page_obj.paginator.page_range %}
+                {% if page_number == page_obj.number %}
+                    <li
+                        class="page-item active"
+                        aria-current="page"
+                    >
+                        <span class="page-link">
+                            {{ page_number }}
+                        </span>
+                    </li>
+
+                {% elif page_number >= page_obj.number|add:"-2" and page_number <= page_obj.number|add:"2" %}
+                    <li class="page-item">
+                        <a
+                            class="page-link"
+                            href="?page={{ page_number }}"
+                        >
+                            {{ page_number }}
+                        </a>
+                    </li>
+                {% endif %}
+            {% endfor %}
+
+            <li
+                class="page-item
+                {% if not page_obj.has_next %}disabled{% endif %}"
+            >
+                {% if page_obj.has_next %}
+                    <a
+                        class="page-link"
+                        href="?page={{ page_obj.next_page_number }}"
+                    >
+                        Вперёд
+                    </a>
+                {% else %}
+                    <span class="page-link">
+                        Вперёд
+                    </span>
+                {% endif %}
+            </li>
+
+            <li
+                class="page-item
+                {% if not page_obj.has_next %}disabled{% endif %}"
+            >
+                {% if page_obj.has_next %}
+                    <a
+                        class="page-link"
+                        href="?page={{ page_obj.paginator.num_pages }}"
+                        aria-label="Последняя страница"
+                    >
+                        »
+                    </a>
+                {% else %}
+                    <span
+                        class="page-link"
+                        aria-hidden="true"
+                    >
+                        »
+                    </span>
+                {% endif %}
+            </li>
+
+        </ul>
+
+        <div class="text-center text-secondary small mt-2">
+            Страница
+            {{ page_obj.number }}
+            из
+            {{ page_obj.paginator.num_pages }}
+
+            · Всего записей:
+            {{ page_obj.paginator.count }}
+        </div>
+    </nav>
+{% endif %}

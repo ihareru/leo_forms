@@ -1,6 +1,7 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError, ObjectDoesNotExist
+from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Count, F, Max, Prefetch, Q
 from django.db.models.deletion import ProtectedError
@@ -23,6 +24,9 @@ from .services.protocol_defaults import build_protocol_initial_data
 from .services.copying import copy_survey
 
 
+SURVEYS_PER_PAGE = 20
+
+
 @login_required
 def survey_list(request):
     """
@@ -41,11 +45,24 @@ def survey_list(request):
                 distinct=True,
             ),
         )
-        .order_by("-created_at")
+        .order_by(
+            "-created_at",
+            "-id",
+        )
+    )
+
+    paginator = Paginator(
+        surveys,
+        SURVEYS_PER_PAGE,
+    )
+
+    page_obj = paginator.get_page(
+        request.GET.get("page"),
     )
 
     context = {
-        "surveys": surveys,
+        "surveys": page_obj,
+        "page_obj": page_obj,
     }
 
     return render(
@@ -53,7 +70,6 @@ def survey_list(request):
         "surveys/survey_list.html",
         context,
     )
-
 
 @login_required
 def results_list(request):
@@ -94,8 +110,18 @@ def results_list(request):
         )
     )
 
+    paginator = Paginator(
+        surveys,
+        SURVEYS_PER_PAGE,
+    )
+
+    page_obj = paginator.get_page(
+        request.GET.get("page"),
+    )
+
     context = {
-        "surveys": surveys,
+        "surveys": page_obj,
+        "page_obj": page_obj,
     }
 
     return render(
@@ -163,9 +189,18 @@ def protocol_list(request):
         )
     )
 
+    paginator = Paginator(
+        surveys,
+        SURVEYS_PER_PAGE,
+    )
+
+    page_obj = paginator.get_page(
+        request.GET.get("page"),
+    )
+
     survey_rows = []
 
-    for survey in surveys:
+    for survey in page_obj:
         generated_protocols = (
             survey.loaded_generated_protocols
         )
@@ -196,6 +231,7 @@ def protocol_list(request):
 
     context = {
         "survey_rows": survey_rows,
+        "page_obj": page_obj,
     }
 
     return render(
@@ -203,7 +239,6 @@ def protocol_list(request):
         "surveys/protocol_list.html",
         context,
     )
-
 
 @login_required
 def survey_create(request):

@@ -91,14 +91,14 @@ jobs:
           python manage.py test
 
   deploy:
-    name: Deploy to forms.ihare.ru
+    name: Deploy to forms.leovit.ru
     runs-on: ubuntu-latest
     needs:
       - test
 
     environment:
       name: production
-      url: https://forms.ihare.ru
+      url: https://forms.leovit.ru
 
     steps:
       - name: Configure SSH

@@ -30,6 +30,5 @@ CSRF_TRUSTED_ORIGINS = env.list(
     "CSRF_TRUSTED_ORIGINS",
     default=[
         "https://forms.leovit.ru",
-        "https://forms.ihare.ru",
     ],
 )

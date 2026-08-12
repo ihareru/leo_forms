@@ -1885,3 +1885,174 @@ class SurveySectionListTests(TestCase):
             response,
             "30.07.2026",
         )
+
+
+class SurveyPaginationTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="pagination_user",
+            password="StrongPassword123!",
+        )
+
+        self.client.force_login(
+            self.user,
+        )
+
+    def create_surveys(
+        self,
+        count,
+        *,
+        status=Survey.Status.DRAFT,
+        with_submissions=False,
+    ):
+        surveys = []
+
+        for index in range(count):
+            survey = Survey.objects.create(
+                owner=self.user,
+                title=f"Форма {index + 1:02d}",
+                status=status,
+            )
+
+            if with_submissions:
+                Submission.objects.create(
+                    survey=survey,
+                    full_name=f"Участник {index + 1}",
+                    position="Технолог",
+                )
+
+            surveys.append(survey)
+
+        return surveys
+
+    def test_survey_list_is_paginated(self):
+        self.create_surveys(21)
+
+        response = self.client.get(
+            reverse(
+                "surveys:survey_list",
+            )
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertEqual(
+            len(response.context["surveys"]),
+            20,
+        )
+
+        self.assertEqual(
+            response.context["page_obj"].paginator.count,
+            21,
+        )
+
+        self.assertEqual(
+            response.context["page_obj"].paginator.num_pages,
+            2,
+        )
+
+    def test_survey_list_second_page(self):
+        self.create_surveys(21)
+
+        response = self.client.get(
+            reverse(
+                "surveys:survey_list",
+            ),
+            {
+                "page": 2,
+            },
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertEqual(
+            len(response.context["surveys"]),
+            1,
+        )
+
+        self.assertEqual(
+            response.context["page_obj"].number,
+            2,
+        )
+
+    def test_results_list_is_paginated(self):
+        self.create_surveys(
+            21,
+            with_submissions=True,
+        )
+
+        response = self.client.get(
+            reverse(
+                "surveys:results_list",
+            )
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertEqual(
+            len(response.context["surveys"]),
+            20,
+        )
+
+        self.assertEqual(
+            response.context["page_obj"].paginator.count,
+            21,
+        )
+
+    def test_protocol_list_is_paginated(self):
+        self.create_surveys(
+            21,
+            status=Survey.Status.CLOSED,
+        )
+
+        response = self.client.get(
+            reverse(
+                "surveys:protocol_list",
+            )
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertEqual(
+            len(response.context["survey_rows"]),
+            20,
+        )
+
+        self.assertEqual(
+            response.context["page_obj"].paginator.count,
+            21,
+        )
+
+    def test_invalid_page_falls_back_safely(self):
+        self.create_surveys(21)
+
+        response = self.client.get(
+            reverse(
+                "surveys:survey_list",
+            ),
+            {
+                "page": "invalid",
+            },
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertEqual(
+            response.context["page_obj"].number,
+            1,
+        )

@@ -9,22 +9,25 @@ from apps.surveys.models import Answer
 from apps.surveys.models import SurveyQuestion
 
 
-ONE_DECIMAL_PLACE = Decimal("0.1")
+TWO_DECIMAL_PLACES = Decimal("0.01")
 
 
 def round_score(value):
     """
-    Округляет среднее значение до одного знака после запятой.
+    Округляет рассчитанное среднее значение
+    до двух знаков после запятой.
 
-    Используется стандартное арифметическое округление:
-    4.45 -> 4.5
+    Примеры:
+    4.975 -> 4.98
+    4.994 -> 4.99
+    4.995 -> 5.00
     """
 
     if value is None:
         return None
 
     return Decimal(value).quantize(
-        ONE_DECIMAL_PLACE,
+        TWO_DECIMAL_PLACES,  # noqa: F821
         rounding=ROUND_HALF_UP,
     )
 
@@ -66,7 +69,7 @@ def get_survey_results(survey):
 
     for sample in samples:
         score_cells = []
-        score_values = []
+        raw_score_values = []
 
         for question in rating_questions:
             average = (
@@ -83,24 +86,20 @@ def get_survey_results(survey):
                 .get("average")
             )
 
-            rounded_average = round_score(average)
-
-            if rounded_average is not None:
-                score_values.append(rounded_average)
+            if average is not None:
+                raw_score_values.append(Decimal(average))
 
             score_cells.append(
                 {
                     "question": question,
-                    "average": rounded_average,
+                    "average": round_score(average),
                 }
             )
 
         overall_average = None
 
-        if score_values:
-            overall_average = round_score(
-                sum(score_values) / len(score_values)
-            )
+        if raw_score_values:
+            overall_average = round_score(sum(raw_score_values) / len(raw_score_values))
 
         comments_queryset = Answer.objects.filter(
             sample=sample,

@@ -842,6 +842,72 @@ class SurveyResultsTests(TestCase):
             comments,
         )
 
+    def test_overall_average_uses_two_decimal_places(self):
+        submission = Submission.objects.create(
+            survey=self.survey,
+            full_name="Участник",
+            position="Технолог",
+        )
+
+        rating_questions = list(
+            self.survey.questions.filter(
+                question_type=(SurveyQuestion.QuestionType.RATING),
+            ).order_by(
+                "order",
+                "id",
+            )
+        )
+
+        scores = [
+            Decimal("5.0"),
+            Decimal("5.0"),
+            Decimal("5.0"),
+            Decimal("5.0"),
+            Decimal("4.9"),
+        ]
+
+        for question, score in zip(
+            rating_questions,
+            scores,
+        ):
+            Answer.objects.create(
+                submission=submission,
+                sample=self.sample,
+                question=question,
+                numeric_value=score,
+            )
+
+        results = get_survey_results(
+            self.survey,
+        )
+
+        self.assertEqual(
+            results["rows"][0]["overall_average"],
+            Decimal("4.98"),
+        )
+
+    def test_question_average_uses_two_decimal_places(self):
+        self.create_submission(
+            full_name="Участник №1",
+            score=Decimal("4.9"),
+        )
+
+        self.create_submission(
+            full_name="Участник №2",
+            score=Decimal("5.0"),
+        )
+
+        results = get_survey_results(
+            self.survey,
+        )
+
+        rating_score = results["rows"][0]["scores"][0]
+
+        self.assertEqual(
+            rating_score["average"],
+            Decimal("4.95"),
+        )
+
 class SurveyReportViewTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(

@@ -2122,3 +2122,365 @@ class SurveyPaginationTests(TestCase):
             response.context["page_obj"].number,
             1,
         )
+
+
+class SurveyLiveSearchTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="search_user",
+            password="StrongPassword123!",
+            first_name="Иван",
+            last_name="Иванов",
+        )
+
+        self.other_user = User.objects.create_user(
+            username="other_search_user",
+            password="StrongPassword123!",
+            first_name="Пётр",
+            last_name="Петров",
+        )
+
+        self.client.force_login(
+            self.user,
+        )
+
+        self.milk_survey = Survey.objects.create(
+            owner=self.user,
+            title="Дегустация молока",
+            description="Сравнение образцов молочной продукции",
+        )
+
+        self.juice_survey = Survey.objects.create(
+            owner=self.user,
+            title="Дегустация сока",
+            description="Апельсиновый сок",
+        )
+
+        self.other_survey = Survey.objects.create(
+            owner=self.other_user,
+            title="Чужая форма молока",
+            description="Чужая форма",
+        )
+
+    def test_survey_list_searches_by_title(self):
+        response = self.client.get(
+            reverse(
+                "surveys:survey_list",
+            ),
+            {
+                "q": "молока",
+            },
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertContains(
+            response,
+            "Дегустация молока",
+        )
+
+        self.assertNotContains(
+            response,
+            "Дегустация сока",
+        )
+
+    def test_survey_list_search_is_case_insensitive(self):
+        response = self.client.get(
+            reverse(
+                "surveys:survey_list",
+            ),
+            {
+                "q": "МОЛОКА",
+            },
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertContains(
+            response,
+            "Дегустация молока",
+        )
+
+    def test_survey_list_searches_by_description(self):
+        response = self.client.get(
+            reverse(
+                "surveys:survey_list",
+            ),
+            {
+                "q": "апельсиновый",
+            },
+        )
+
+        self.assertContains(
+            response,
+            "Дегустация сока",
+        )
+
+        self.assertNotContains(
+            response,
+            "Дегустация молока",
+        )
+
+    def test_survey_list_does_not_show_other_user_surveys(self):
+        response = self.client.get(
+            reverse(
+                "surveys:survey_list",
+            ),
+            {
+                "q": "молока",
+            },
+        )
+
+        self.assertContains(
+            response,
+            "Дегустация молока",
+        )
+
+        self.assertNotContains(
+            response,
+            "Чужая форма молока",
+        )
+
+    def test_results_search(self):
+        Submission.objects.create(
+            survey=self.milk_survey,
+            full_name="Участник молока",
+            position="Технолог",
+        )
+
+        Submission.objects.create(
+            survey=self.juice_survey,
+            full_name="Участник сока",
+            position="Технолог",
+        )
+
+        response = self.client.get(
+            reverse(
+                "surveys:results_list",
+            ),
+            {
+                "q": "молока",
+            },
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertContains(
+            response,
+            "Дегустация молока",
+        )
+
+        self.assertNotContains(
+            response,
+            "Дегустация сока",
+        )
+
+    def test_protocol_searches_by_title(self):
+        self.milk_survey.status = Survey.Status.CLOSED
+        self.milk_survey.save(
+            update_fields=[
+                "status",
+                "updated_at",
+            ]
+        )
+
+        self.juice_survey.status = Survey.Status.CLOSED
+        self.juice_survey.save(
+            update_fields=[
+                "status",
+                "updated_at",
+            ]
+        )
+
+        response = self.client.get(
+            reverse(
+                "surveys:protocol_list",
+            ),
+            {
+                "q": "молока",
+            },
+        )
+
+        self.assertContains(
+            response,
+            "Дегустация молока",
+        )
+
+        self.assertNotContains(
+            response,
+            "Дегустация сока",
+        )
+
+    def test_protocol_searches_by_protocol_number(self):
+        self.milk_survey.status = Survey.Status.CLOSED
+        self.milk_survey.save(
+            update_fields=[
+                "status",
+                "updated_at",
+            ]
+        )
+
+        SurveyProtocol.objects.create(
+            survey=self.milk_survey,
+            protocol_number="501",
+        )
+
+        response = self.client.get(
+            reverse(
+                "surveys:protocol_list",
+            ),
+            {
+                "q": "501",
+            },
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertContains(
+            response,
+            "Дегустация молока",
+        )
+
+        self.assertContains(
+            response,
+            "501",
+        )
+
+    def test_search_query_is_preserved_in_context(self):
+        response = self.client.get(
+            reverse(
+                "surveys:survey_list",
+            ),
+            {
+                "q": "молока",
+            },
+        )
+
+        self.assertEqual(
+            response.context["search_query"],
+            "молока",
+        )
+
+    def test_empty_query_returns_normal_list(self):
+        response = self.client.get(
+            reverse(
+                "surveys:survey_list",
+            ),
+            {
+                "q": "",
+            },
+        )
+
+        self.assertContains(
+            response,
+            "Дегустация молока",
+        )
+
+        self.assertContains(
+            response,
+            "Дегустация сока",
+        )
+
+    def test_search_is_paginated(self):
+        for index in range(25):
+            Survey.objects.create(
+                owner=self.user,
+                title=f"Поисковая форма {index + 1}",
+                description="Специальный поиск",
+            )
+
+        response = self.client.get(
+            reverse(
+                "surveys:survey_list",
+            ),
+            {
+                "q": "Поисковая форма",
+            },
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertEqual(
+            response.context["page_obj"].paginator.count,
+            25,
+        )
+
+        self.assertEqual(
+            response.context["page_obj"].paginator.num_pages,
+            2,
+        )
+
+        self.assertEqual(
+            len(response.context["surveys"]),
+            20,
+        )
+
+    def test_search_second_page(self):
+        for index in range(25):
+            Survey.objects.create(
+                owner=self.user,
+                title=f"Поисковая форма {index + 1}",
+                description="Специальный поиск",
+            )
+
+        response = self.client.get(
+            reverse(
+                "surveys:survey_list",
+            ),
+            {
+                "q": "Поисковая форма",
+                "page": 2,
+            },
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertEqual(
+            response.context["page_obj"].number,
+            2,
+        )
+
+        self.assertEqual(
+            len(response.context["surveys"]),
+            5,
+        )
+
+    def test_ajax_search_returns_success(self):
+        response = self.client.get(
+            reverse(
+                "surveys:survey_list",
+            ),
+            {
+                "q": "молока",
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertContains(
+            response,
+            "Дегустация молока",
+        )
+

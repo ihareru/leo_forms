@@ -51,6 +51,30 @@ def survey_list(request):
         )
     )
 
+    search_query = request.GET.get(
+        "q",
+        "",
+    ).strip()
+
+    if search_query:
+        surveys = surveys.filter(
+            Q(
+                title__icontains=search_query,
+            )
+            | Q(
+                description__icontains=search_query,
+            )
+            | Q(
+                owner__username__icontains=search_query,
+            )
+            | Q(
+                owner__first_name__icontains=search_query,
+            )
+            | Q(
+                owner__last_name__icontains=search_query,
+            )
+        )
+
     paginator = Paginator(
         surveys,
         SURVEYS_PER_PAGE,
@@ -63,6 +87,7 @@ def survey_list(request):
     context = {
         "surveys": page_obj,
         "page_obj": page_obj,
+        "search_query": search_query,
     }
 
     return render(
@@ -110,6 +135,30 @@ def results_list(request):
         )
     )
 
+    search_query = request.GET.get(
+        "q",
+        "",
+    ).strip()
+
+    if search_query:
+        surveys = surveys.filter(
+            Q(
+                title__icontains=search_query,
+            )
+            | Q(
+                description__icontains=search_query,
+            )
+            | Q(
+                owner__username__icontains=search_query,
+            )
+            | Q(
+                owner__first_name__icontains=search_query,
+            )
+            | Q(
+                owner__last_name__icontains=search_query,
+            )
+        )
+
     paginator = Paginator(
         surveys,
         SURVEYS_PER_PAGE,
@@ -122,6 +171,7 @@ def results_list(request):
     context = {
         "surveys": page_obj,
         "page_obj": page_obj,
+        "search_query": search_query,
     }
 
     return render(
@@ -189,6 +239,33 @@ def protocol_list(request):
         )
     )
 
+    search_query = request.GET.get(
+        "q",
+        "",
+    ).strip()
+
+    if search_query:
+        surveys = surveys.filter(
+            Q(
+                title__icontains=search_query,
+            )
+            | Q(
+                description__icontains=search_query,
+            )
+            | Q(
+                owner__username__icontains=search_query,
+            )
+            | Q(
+                owner__first_name__icontains=search_query,
+            )
+            | Q(
+                owner__last_name__icontains=search_query,
+            )
+            | Q(
+                protocol__protocol_number__icontains=search_query,
+            )
+        )
+
     paginator = Paginator(
         surveys,
         SURVEYS_PER_PAGE,
@@ -232,6 +309,7 @@ def protocol_list(request):
     context = {
         "survey_rows": survey_rows,
         "page_obj": page_obj,
+        "search_query": search_query,
     }
 
     return render(

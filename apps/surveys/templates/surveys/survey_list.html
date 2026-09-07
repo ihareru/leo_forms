@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}
     Формы — Леовит формы
@@ -24,151 +25,186 @@
         </p>
     </div>
 
-    <div>
-        <a
-            href="{% url 'surveys:survey_create' %}"
-            class="btn btn-primary"
+    <div
+    class="d-flex flex-column flex-sm-row
+           align-items-stretch gap-2"
+>
+    <form
+        method="get"
+        class="d-flex"
+        data-live-search-form
+    >
+        <input
+            type="search"
+            name="q"
+            value="{{ search_query }}"
+            class="form-control"
+            placeholder="Поиск форм..."
+            autocomplete="off"
+            aria-label="Поиск форм"
+            data-live-search-input
         >
-            Создать форму
-        </a>
-    </div>
+    </form>
+
+    <a
+        href="{% url 'surveys:survey_create' %}"
+        class="btn btn-primary text-nowrap"
+    >
+        Создать форму
+    </a>
+</div>
 </div>
 
-{% if surveys %}
-    <div class="card shadow-sm">
-        <div class="table-responsive">
-            <table class="table align-middle mb-0">
-                <thead>
-                    <tr>
-                        <th>Название</th>
-
-                        {% if request.user.is_portal_admin %}
-                            <th>Создатель</th>
-                        {% endif %}
-
-                        <th>Статус</th>
-                        <th>Образцов</th>
-                        <th>Ответов</th>
-                        <th>Изменена</th>
-                        <th></th>
-                    </tr>
-                </thead>
-
-                <tbody>
-                    {% for survey in surveys %}
+<div data-live-search-results>
+    {% if surveys %}
+        <div class="card shadow-sm">
+            <div class="table-responsive">
+                <table class="table align-middle mb-0">
+                    <thead>
                         <tr>
-                            <td>
-                                <a
-                                    href="{% url 'surveys:survey_edit' survey.pk %}"
-                                    class="fw-semibold text-decoration-none"
-                                >
-                                    {{ survey.title }}
-                                </a>
-
-                                {% if survey.description %}
-                                    <div class="small text-secondary mt-1">
-                                        {{ survey.description|truncatechars:100 }}
-                                    </div>
-                                {% endif %}
-                            </td>
+                            <th>Название</th>
 
                             {% if request.user.is_portal_admin %}
-                                <td>
-                                    {{ survey.owner.get_full_name }}
-                                </td>
+                                <th>Создатель</th>
                             {% endif %}
 
-                            <td>
-                                {% if survey.status == "DRAFT" %}
-                                    <span class="badge text-bg-secondary">
-                                        Черновик
-                                    </span>
-                                {% elif survey.status == "PUBLISHED" %}
-                                    <span class="badge text-bg-success">
-                                        Опубликована
-                                    </span>
-                                {% elif survey.status == "CLOSED" %}
-                                    <span class="badge text-bg-warning">
-                                        Сбор закрыт
-                                    </span>
-                                {% elif survey.status == "ARCHIVED" %}
-                                    <span class="badge text-bg-dark">
-                                        Архивная
-                                    </span>
-                                {% endif %}
-                            </td>
+                            <th>Статус</th>
+                            <th>Образцов</th>
+                            <th>Ответов</th>
+                            <th>Изменена</th>
+                            <th></th>
+                        </tr>
+                    </thead>
 
-                            <td>
-                                {{ survey.samples_total }}
-                            </td>
-
-                            <td>
-                                {{ survey.submissions_total }}
-                            </td>
-
-                            <td>
-                                {{ survey.updated_at|date:"d.m.Y H:i" }}
-                            </td>
-
-                            <td class="text-end">
-                                <div class="d-flex justify-content-end gap-2">
-
-                                    <form
-                                        method="post"
-                                        action="{% url 'surveys:survey_copy' survey.pk %}"
-                                    >
-                                        {% csrf_token %}
-
-                                        <button
-                                            type="submit"
-                                            class="btn btn-sm btn-outline-secondary"
-                                            title="Создать копию формы"
-                                        >
-                                            Копировать
-                                        </button>
-                                    </form>
-
-                                    <a
-                                        href="{% url 'surveys:survey_results' survey.pk %}"
-                                        class="btn btn-sm btn-outline-success"
-                                    >
-                                        Результаты
-                                    </a>
-
+                    <tbody>
+                        {% for survey in surveys %}
+                            <tr>
+                                <td>
                                     <a
                                         href="{% url 'surveys:survey_edit' survey.pk %}"
-                                        class="btn btn-sm btn-outline-primary"
+                                        class="fw-semibold text-decoration-none"
                                     >
-                                        Открыть
+                                        {{ survey.title }}
                                     </a>
-                                </div>
-                            </td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+
+                                    {% if survey.description %}
+                                        <div class="small text-secondary mt-1">
+                                            {{ survey.description|truncatechars:100 }}
+                                        </div>
+                                    {% endif %}
+                                </td>
+
+                                {% if request.user.is_portal_admin %}
+                                    <td>
+                                        {{ survey.owner.get_full_name }}
+                                    </td>
+                                {% endif %}
+
+                                <td>
+                                    {% if survey.status == "DRAFT" %}
+                                        <span class="badge text-bg-secondary">
+                                            Черновик
+                                        </span>
+                                    {% elif survey.status == "PUBLISHED" %}
+                                        <span class="badge text-bg-success">
+                                            Опубликована
+                                        </span>
+                                    {% elif survey.status == "CLOSED" %}
+                                        <span class="badge text-bg-warning">
+                                            Сбор закрыт
+                                        </span>
+                                    {% elif survey.status == "ARCHIVED" %}
+                                        <span class="badge text-bg-dark">
+                                            Архивная
+                                        </span>
+                                    {% endif %}
+                                </td>
+
+                                <td>
+                                    {{ survey.samples_total }}
+                                </td>
+
+                                <td>
+                                    {{ survey.submissions_total }}
+                                </td>
+
+                                <td>
+                                    {{ survey.updated_at|date:"d.m.Y H:i" }}
+                                </td>
+
+                                <td class="text-end">
+                                    <div class="d-flex justify-content-end gap-2">
+
+                                        <form
+                                            method="post"
+                                            action="{% url 'surveys:survey_copy' survey.pk %}"
+                                        >
+                                            {% csrf_token %}
+
+                                            <button
+                                                type="submit"
+                                                class="btn btn-sm btn-outline-secondary"
+                                                title="Создать копию формы"
+                                            >
+                                                Копировать
+                                            </button>
+                                        </form>
+
+                                        <a
+                                            href="{% url 'surveys:survey_results' survey.pk %}"
+                                            class="btn btn-sm btn-outline-success"
+                                        >
+                                            Результаты
+                                        </a>
+
+                                        <a
+                                            href="{% url 'surveys:survey_edit' survey.pk %}"
+                                            class="btn btn-sm btn-outline-primary"
+                                        >
+                                            Открыть
+                                        </a>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
-    </div>
-{% else %}
-    <div class="card shadow-sm">
-        <div class="card-body py-5 text-center">
-            <h2 class="h5">
-                Форм пока нет
-            </h2>
+    {% else %}
+        <div class="card shadow-sm">
+            <div class="card-body py-5 text-center">
+                <h2 class="h5">
+                    {% if search_query %}
+                        Ничего не найдено
+                    {% else %}
+                        Форм пока нет
+                    {% endif %}
+                </h2>
 
-            <p class="text-secondary">
-                Создайте первую форму для проведения дегустации.
-            </p>
+                <p class="text-secondary">
+                    {% if search_query %}
+                        Попробуйте изменить поисковый запрос.
+                    {% else %}
+                        Создайте первую форму для проведения дегустации.
+                    {% endif %}
+                </p>
 
-            <a
-                href="{% url 'surveys:survey_create' %}"
-                class="btn btn-primary"
-            >
-                Создать форму
-            </a>
+                <a
+                    href="{% url 'surveys:survey_create' %}"
+                    class="btn btn-primary"
+                >
+                    Создать форму
+                </a>
+            </div>
         </div>
-    </div>
-{% endif %}
+    {% endif %}
 
-{% include "surveys/includes/pagination.html" %}
+    {% include "surveys/includes/pagination.html" %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+    {{ block.super }}
+    <script src="/static/js/live_search.js"></script>
 {% endblock %}

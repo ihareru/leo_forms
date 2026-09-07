@@ -12,7 +12,7 @@
                 {% if page_obj.has_previous %}
                     <a
                         class="page-link"
-                        href="?page=1"
+                        href="?{% if search_query %}q={{ search_query|urlencode }}&{% endif %}page=1"
                         aria-label="Первая страница"
                     >
                         «
@@ -34,7 +34,7 @@
                 {% if page_obj.has_previous %}
                     <a
                         class="page-link"
-                        href="?page={{ page_obj.previous_page_number }}"
+                        href="?{% if search_query %}q={{ search_query|urlencode }}&{% endif %}page={{ page_obj.previous_page_number }}"
                     >
                         Назад
                     </a>
@@ -60,7 +60,7 @@
                     <li class="page-item">
                         <a
                             class="page-link"
-                            href="?page={{ page_number }}"
+                            href="?{% if search_query %}q={{ search_query|urlencode }}&{% endif %}page={{ page_number }}"
                         >
                             {{ page_number }}
                         </a>
@@ -75,7 +75,7 @@
                 {% if page_obj.has_next %}
                     <a
                         class="page-link"
-                        href="?page={{ page_obj.next_page_number }}"
+                        href="?{% if search_query %}q={{ search_query|urlencode }}&{% endif %}page={{ page_obj.next_page_number }}"
                     >
                         Вперёд
                     </a>
@@ -93,7 +93,7 @@
                 {% if page_obj.has_next %}
                     <a
                         class="page-link"
-                        href="?page={{ page_obj.paginator.num_pages }}"
+                        href="?{% if search_query %}q={{ search_query|urlencode }}&{% endif %}page={{ page_obj.paginator.num_pages }}"
                         aria-label="Последняя страница"
                     >
                         »

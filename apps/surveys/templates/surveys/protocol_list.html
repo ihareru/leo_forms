@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}
     Протоколы — Леовит формы
@@ -21,183 +22,213 @@
         </p>
     </div>
 
-    <div>
+    <div
+        class="d-flex flex-column flex-sm-row
+               align-items-stretch gap-2"
+    >
+        <form
+            method="get"
+            class="d-flex"
+            data-live-search-form
+        >
+            <input
+                type="search"
+                name="q"
+                value="{{ search_query }}"
+                class="form-control"
+                placeholder="Поиск протоколов..."
+                autocomplete="off"
+                aria-label="Поиск протоколов"
+                data-live-search-input
+            >
+        </form>
+
         <a
             href="{% url 'accounts:dashboard' %}"
-            class="btn btn-outline-secondary"
+            class="btn btn-outline-secondary text-nowrap"
         >
             В личный кабинет
         </a>
     </div>
 </div>
 
-{% if survey_rows %}
-    <div class="card shadow-sm">
-        <div class="table-responsive">
-            <table class="table align-middle mb-0">
-                <thead>
-                    <tr>
-                        <th>Форма</th>
-
-                        {% if request.user.is_portal_admin %}
-                            <th>Создатель</th>
-                        {% endif %}
-
-                        <th>Статус</th>
-                        <th>Ответов</th>
-                        <th>Номер протокола</th>
-                        <th>Дата протокола</th>
-                        <th>Версий DOCX</th>
-                        <th>Последняя версия</th>
-                        <th></th>
-                    </tr>
-                </thead>
-
-                <tbody>
-                    {% for row in survey_rows %}
+<div data-live-search-results>
+    {% if survey_rows %}
+        <div class="card shadow-sm">
+            <div class="table-responsive">
+                <table class="table align-middle mb-0">
+                    <thead>
                         <tr>
-                            <td>
-                                <div class="fw-semibold">
-                                    {{ row.survey.title }}
-                                </div>
-
-                                {% if row.survey.closed_at %}
-                                    <div
-                                        class="small text-secondary mt-1"
-                                    >
-                                        Сбор закрыт:
-                                        {{ row.survey.closed_at|date:"d.m.Y H:i" }}
-                                    </div>
-                                {% endif %}
-                            </td>
+                            <th>Форма</th>
 
                             {% if request.user.is_portal_admin %}
-                                <td>
-                                    {{ row.survey.owner.get_full_name|default:row.survey.owner.username }}
-                                </td>
+                                <th>Создатель</th>
                             {% endif %}
 
-                            <td>
-                                {% if row.survey.status == "CLOSED" %}
-                                    <span
-                                        class="badge text-bg-warning"
-                                    >
-                                        Сбор закрыт
-                                    </span>
-                                {% elif row.survey.status == "ARCHIVED" %}
-                                    <span
-                                        class="badge text-bg-dark"
-                                    >
-                                        Архивная
-                                    </span>
+                            <th>Статус</th>
+                            <th>Ответов</th>
+                            <th>Номер протокола</th>
+                            <th>Дата протокола</th>
+                            <th>Версий DOCX</th>
+                            <th>Последняя версия</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        {% for row in survey_rows %}
+                            <tr>
+                                <td>
+                                    <div class="fw-semibold">
+                                        {{ row.survey.title }}
+                                    </div>
+
+                                    {% if row.survey.closed_at %}
+                                        <div
+                                            class="small text-secondary mt-1"
+                                        >
+                                            Сбор закрыт:
+                                            {{ row.survey.closed_at|date:"d.m.Y H:i" }}
+                                        </div>
+                                    {% endif %}
+                                </td>
+
+                                {% if request.user.is_portal_admin %}
+                                    <td>
+                                        {{ row.survey.owner.get_full_name|default:row.survey.owner.username }}
+                                    </td>
                                 {% endif %}
-                            </td>
 
-                            <td>
-                                <div>
-                                    Всего:
-                                    {{ row.survey.submissions_total }}
-                                </div>
+                                <td>
+                                    {% if row.survey.status == "CLOSED" %}
+                                        <span
+                                            class="badge text-bg-warning"
+                                        >
+                                            Сбор закрыт
+                                        </span>
+                                    {% elif row.survey.status == "ARCHIVED" %}
+                                        <span
+                                            class="badge text-bg-dark"
+                                        >
+                                            Архивная
+                                        </span>
+                                    {% endif %}
+                                </td>
 
-                                <div class="small text-secondary">
-                                    В расчётах:
-                                    {{ row.survey.included_submissions_total }}
-                                </div>
-                            </td>
-
-                            <td>
-                                {% if row.protocol and row.protocol.protocol_number %}
-                                    № {{ row.protocol.protocol_number }}
-                                {% else %}
-                                    <span class="text-secondary">
-                                        Не указан
-                                    </span>
-                                {% endif %}
-                            </td>
-
-                            <td>
-                                {% if row.protocol and row.protocol.protocol_date %}
-                                    {{ row.protocol.protocol_date|date:"d.m.Y" }}
-                                {% else %}
-                                    <span class="text-secondary">
-                                        Не указана
-                                    </span>
-                                {% endif %}
-                            </td>
-
-                            <td>
-                                {{ row.generated_protocols_total }}
-                            </td>
-
-                            <td>
-                                {% if row.latest_generated_protocol %}
+                                <td>
                                     <div>
-                                        Версия
-                                        {{ row.latest_generated_protocol.version }}
+                                        Всего:
+                                        {{ row.survey.submissions_total }}
                                     </div>
 
                                     <div class="small text-secondary">
-                                        {{ row.latest_generated_protocol.generated_at|date:"d.m.Y H:i" }}
+                                        В расчётах:
+                                        {{ row.survey.included_submissions_total }}
                                     </div>
-                                {% else %}
-                                    <span class="text-secondary">
-                                        Не сформирован
-                                    </span>
-                                {% endif %}
-                            </td>
+                                </td>
 
-                            <td class="text-end">
-                                <div
-                                    class="d-flex flex-wrap
-                                           justify-content-end gap-2"
-                                >
-                                    <a
-                                        href="{% url 'surveys:survey_protocol_edit' row.survey.pk %}"
-                                        class="btn btn-sm btn-primary"
-                                    >
-                                        {% if row.protocol %}
-                                            Открыть
-                                        {% else %}
-                                            Создать
-                                        {% endif %}
-                                    </a>
-
-                                    {% if row.latest_generated_protocol %}
-                                        <a
-                                            href="{% url 'surveys:generated_protocol_download' row.survey.pk row.latest_generated_protocol.pk %}"
-                                            class="btn btn-sm btn-outline-success"
-                                        >
-                                            Скачать DOCX
-                                        </a>
+                                <td>
+                                    {% if row.protocol and row.protocol.protocol_number %}
+                                        № {{ row.protocol.protocol_number }}
+                                    {% else %}
+                                        <span class="text-secondary">
+                                            Не указан
+                                        </span>
                                     {% endif %}
-                                </div>
-                            </td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-{% else %}
-    <div class="card shadow-sm">
-        <div class="card-body py-5 text-center">
-            <h2 class="h5">
-                Форм для протоколов пока нет
-            </h2>
+                                </td>
 
-            <p class="text-secondary mb-4">
-                Протокол можно оформить после закрытия
-                сбора ответов по форме.
-            </p>
+                                <td>
+                                    {% if row.protocol and row.protocol.protocol_date %}
+                                        {{ row.protocol.protocol_date|date:"d.m.Y" }}
+                                    {% else %}
+                                        <span class="text-secondary">
+                                            Не указана
+                                        </span>
+                                    {% endif %}
+                                </td>
 
-            <a
-                href="{% url 'surveys:survey_list' %}"
-                class="btn btn-primary"
-            >
-                Перейти к формам
-            </a>
+                                <td>
+                                    {{ row.generated_protocols_total }}
+                                </td>
+
+                                <td>
+                                    {% if row.latest_generated_protocol %}
+                                        <div>
+                                            Версия
+                                            {{ row.latest_generated_protocol.version }}
+                                        </div>
+
+                                        <div class="small text-secondary">
+                                            {{ row.latest_generated_protocol.generated_at|date:"d.m.Y H:i" }}
+                                        </div>
+                                    {% else %}
+                                        <span class="text-secondary">
+                                            Не сформирован
+                                        </span>
+                                    {% endif %}
+                                </td>
+
+                                <td class="text-end">
+                                    <div
+                                        class="d-flex flex-wrap
+                                               justify-content-end gap-2"
+                                    >
+                                        <a
+                                            href="{% url 'surveys:survey_protocol_edit' row.survey.pk %}"
+                                            class="btn btn-sm btn-primary"
+                                        >
+                                            {% if row.protocol %}
+                                                Открыть
+                                            {% else %}
+                                                Создать
+                                            {% endif %}
+                                        </a>
+
+                                        {% if row.latest_generated_protocol %}
+                                            <a
+                                                href="{% url 'surveys:generated_protocol_download' row.survey.pk row.latest_generated_protocol.pk %}"
+                                                class="btn btn-sm btn-outline-success"
+                                            >
+                                                Скачать DOCX
+                                            </a>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
-    </div>
-{% endif %}
-{% include "surveys/includes/pagination.html" %}
+    {% else %}
+        <div class="card shadow-sm">
+            <div class="card-body py-5 text-center">
+                <h2 class="h5">
+                    {% if search_query %}
+                        Ничего не найдено
+                    {% else %}
+                        Форм для протоколов пока нет
+                    {% endif %}
+                </h2>
+
+                <p class="text-secondary mb-4">
+                    Протокол можно оформить после закрытия
+                    сбора ответов по форме.
+                </p>
+
+                <a
+                    href="{% url 'surveys:survey_list' %}"
+                    class="btn btn-primary"
+                >
+                    Перейти к формам
+                </a>
+            </div>
+        </div>
+    {% endif %}
+    {% include "surveys/includes/pagination.html" %}
+</div>
+{% endblock %}
+{% block extra_js %}
+    {{ block.super }}
+    <script src="/static/js/live_search.js"></script>
 {% endblock %}

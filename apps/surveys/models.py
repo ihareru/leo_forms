@@ -690,10 +690,14 @@ class SurveyProtocol(models.Model):
         blank=True,
     )
 
+    responsible_department = models.CharField(
+        verbose_name="Отдел сотрудника",
+        max_length=255,
+        default="разработки продуктов",
+    )
+
     responsible_employee = models.CharField(
-        verbose_name=(
-            "Сотрудник отдела разработки продуктов"
-        ),
+        verbose_name="ФИО сотрудника",
         max_length=255,
         blank=True,
     )
@@ -768,6 +772,7 @@ class SurveyProtocol(models.Model):
             [
                 self.protocol_number,
                 self.protocol_date,
+                self.responsible_department,
                 self.responsible_employee,
                 self.tasting_goal,
                 self.conclusion,

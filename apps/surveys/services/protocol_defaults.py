@@ -5,6 +5,7 @@ from apps.surveys.models import SurveyProtocol
 
 COPIED_PROTOCOL_FIELDS = (
     "document_code",
+    "responsible_department",
     "responsible_employee",
     "tasting_goal",
     "room_conditions",

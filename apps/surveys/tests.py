@@ -1161,19 +1161,12 @@ class SurveyProtocolTests(TestCase):
             document_code="КК-Ф-020",
             protocol_number="304",
             protocol_date=date(2026, 5, 21),
+            responsible_department="контроля качества",
             responsible_employee="Мальцева Е.С.",
-            tasting_goal=(
-                "Органолептическая оценка продукции"
-            ),
-            room_conditions=(
-                "Температура воздуха +18 – +25 °С."
-            ),
-            product_conditions=(
-                "Температура продукции +55 ± 5 °С."
-            ),
-            conclusion=(
-                "Образец получил высокие оценки."
-            ),
+            tasting_goal=("Органолептическая оценка продукции"),
+            room_conditions=("Температура воздуха +18 – +25 °С."),
+            product_conditions=("Температура продукции +55 ± 5 °С."),
+            conclusion=("Образец получил высокие оценки."),
             signer_position="Нач. ОРП",
             signer_name="Холина О.В.",
         )
@@ -1292,6 +1285,21 @@ class SurveyProtocolTests(TestCase):
 
         self.assertIn(
             self.protocol.product_conditions,
+            document_text,
+        )
+
+    def test_protocol_contains_responsible_department(self):
+        document_data = build_protocol_docx(
+            survey=self.survey,
+            protocol=self.protocol,
+        )
+
+        document = Document(BytesIO(document_data))
+
+        document_text = "\n".join(paragraph.text for paragraph in document.paragraphs)
+
+        self.assertIn(
+            ("Сотрудник отдела контроля качества: Мальцева Е.С."),
             document_text,
         )
 
@@ -1419,6 +1427,7 @@ class ProtocolDefaultsTests(TestCase):
             document_code="КК-Ф-020",
             protocol_number="304",
             protocol_date=date(2026, 5, 21),
+            responsible_department="контроля качества",
             responsible_employee="Мальцева Е.С.",
             tasting_goal="Органолептическая оценка",
             room_conditions="Температура +18 – +25 °С.",
@@ -1447,6 +1456,11 @@ class ProtocolDefaultsTests(TestCase):
         self.assertEqual(
             initial_data["protocol_number"],
             "305",
+        )
+
+        self.assertEqual(
+            initial_data["responsible_department"],
+            "контроля качества",
         )
 
         self.assertEqual(
@@ -1490,6 +1504,7 @@ class ProtocolDefaultsTests(TestCase):
                 "document_code": "КК-Ф-020",
                 "protocol_number": "305",
                 "protocol_date": "2026-07-28",
+                "responsible_department": "разработки продуктов",
                 "responsible_employee": "Сотрудник",
                 "tasting_goal": "Цель",
                 "room_conditions": "Условия",

@@ -347,6 +347,7 @@ class SurveyProtocolForm(forms.ModelForm):
             "document_code",
             "protocol_number",
             "protocol_date",
+            "responsible_department",
             "responsible_employee",
             "tasting_goal",
             "room_conditions",
@@ -377,6 +378,12 @@ class SurveyProtocolForm(forms.ModelForm):
                     "type": "date",
                 },
             ),
+            "responsible_department": forms.TextInput(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": "разработки продуктов",
+                }
+            ),
             "responsible_employee": forms.TextInput(
                 attrs={
                     "class": "form-control",
@@ -387,9 +394,7 @@ class SurveyProtocolForm(forms.ModelForm):
                 attrs={
                     "class": "form-control",
                     "rows": 3,
-                    "placeholder": (
-                        "Органолептическая оценка продукции..."
-                    ),
+                    "placeholder": ("Органолептическая оценка продукции..."),
                 }
             ),
             "room_conditions": forms.Textarea(
@@ -402,18 +407,14 @@ class SurveyProtocolForm(forms.ModelForm):
                 attrs={
                     "class": "form-control",
                     "rows": 5,
-                    "placeholder": (
-                        "Температура готовых блюд..."
-                    ),
+                    "placeholder": ("Температура готовых блюд..."),
                 }
             ),
             "conclusion": forms.Textarea(
                 attrs={
                     "class": "form-control",
                     "rows": 4,
-                    "placeholder": (
-                        "По результатам дегустации..."
-                    ),
+                    "placeholder": ("По результатам дегустации..."),
                 }
             ),
             "signer_position": forms.TextInput(
@@ -450,6 +451,17 @@ class SurveyProtocolForm(forms.ModelForm):
             raise forms.ValidationError(
                 "Укажите номер протокола."
             )
+
+        return value
+
+    def clean_responsible_department(self):
+        value = self.cleaned_data.get(
+            "responsible_department",
+            "",
+        ).strip()
+
+        if not value:
+            raise forms.ValidationError("Укажите название отдела.")
 
         return value
 

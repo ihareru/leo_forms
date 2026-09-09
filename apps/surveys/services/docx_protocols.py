@@ -213,7 +213,7 @@ def build_protocol_docx(
 
     add_text_paragraph(
         document,
-        "Сотрудник отдела разработки продуктов: ",
+        (f"Сотрудник отдела {protocol.responsible_department}: "),
         protocol.responsible_employee,
     )
 
